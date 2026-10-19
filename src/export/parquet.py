@@ -19,7 +19,12 @@ from pathlib import Path
 
 import duckdb
 
-from export.columns import licitacion_select
+from export.columns import (
+    ADJUDICACION_SELECT,
+    CPV_SELECT,
+    LOTE_SELECT,
+    licitacion_select,
+)
 from shared.config import Settings
 from shared.logger import get_logger
 
@@ -27,10 +32,10 @@ logger = get_logger(__name__)
 
 # Postgres-side queries (pushed down via postgres_query).
 _PG_TABLES: dict[str, str] = {
-    "licitacion": licitacion_select() + " ORDER BY fecha_publicacion",
-    "lote": "SELECT * FROM v_lote",
-    "adjudicacion": "SELECT * FROM v_adjudicacion",
-    "cpv": "SELECT * FROM v_cpv",
+    "licitacion": licitacion_select() + " ORDER BY m.fecha_publicacion",
+    "lote": LOTE_SELECT,
+    "adjudicacion": ADJUDICACION_SELECT,
+    "cpv": CPV_SELECT,
     "empresa": "SELECT * FROM empresa",
 }
 
