@@ -3,5 +3,9 @@
   "name": "licit",
   "compatibility_date": "2026-10-01",
   "assets": { "directory": "./site" },
-  "workers_dev": true
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "licit.es", "custom_domain": true },
+    { "pattern": "www.licit.es", "custom_domain": true }
+  ]
 }
