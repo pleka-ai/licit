@@ -1,5 +1,10 @@
-// licit.es Worker: public API over D1 + Parquet files from R2.
-// Everything else falls through to the static assets in site/.
+// licit Worker.
+//   api.licit.es  → public API over D1 (/v1/*, /salud, /docs, /openapi.json)
+//   licit.es      → static site (site/), Parquet from R2 (/data/*), API alias (/api/v1/*)
+
+import { OPENAPI } from "./openapi.js";
+
+const API_HOST = "api.licit.es";
 
 const RESUMEN_COLS = `id, expediente, titulo, organo, organo_id, tipo_contrato, estado,
   presupuesto_sin_iva, importe_adjudicacion, fecha_publicacion,
@@ -27,17 +32,47 @@ export default {
       return Response.redirect(url.toString(), 301);
     }
     try {
+      if (url.hostname === API_HOST) return await apiHost(request, env, url);
       if (url.pathname.startsWith("/data/")) return serveData(request, env, url);
-      if (url.pathname === "/docs") return env.ASSETS.fetch(new URL("/docs.html", url));
-      if (url.pathname.startsWith("/api/")) return await api(request, env, url);
+      if (url.pathname === "/docs") return Response.redirect(`https://${API_HOST}/docs`, 302);
+      if (url.pathname.startsWith("/api/")) {
+        return await api(request, env, url, url.pathname.slice("/api".length));
+      }
     } catch (err) {
-      if (err instanceof HttpError) return json({ error: err.message }, err.status);
-      console.error(err);
-      return json({ error: "Error interno" }, 500);
+      return errorResponse(err);
     }
     return env.ASSETS.fetch(request);
   },
 };
+
+function errorResponse(err) {
+  if (err instanceof HttpError) return json({ detail: err.message }, err.status);
+  console.error(err);
+  return json({ detail: "Error interno" }, 500);
+}
+
+async function apiHost(request, env, url) {
+  const path = url.pathname.replace(/\/+$/, "") || "/";
+  if (path === "/") return Response.redirect(`https://${API_HOST}/docs`, 302);
+  if (path === "/docs") return swaggerUi();
+  if (path === "/openapi.json") return json(OPENAPI, 200, { "cache-control": "public, max-age=3600" });
+  return api(request, env, url, path);
+}
+
+function swaggerUi() {
+  const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>licit API</title>
+<link rel="icon" href="https://licit.es/favicon.svg">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui.css">
+<style>body{margin:0}.topbar{display:none}.swagger-ui .info .title{font-family:ui-monospace,Menlo,monospace}</style>
+</head><body><div id="ui"></div>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
+<script>SwaggerUIBundle({url:"/openapi.json",dom_id:"#ui",deepLinking:true,tryItOutEnabled:true,defaultModelsExpandDepth:0});</script>
+</body></html>`;
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+}
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -89,8 +124,8 @@ async function dataIndex(env) {
 
 // ---------------------------------------------------------------------- API
 
-async function api(request, env, url) {
-  const path = url.pathname.replace(/\/+$/, "");
+async function api(request, env, url, rawPath) {
+  const path = rawPath.replace(/\/+$/, "");
   const m = (re) => path.match(re);
   let match;
   let data;
@@ -98,33 +133,40 @@ async function api(request, env, url) {
 
   if (request.method === "OPTIONS") return new Response(null, { headers: cors() });
 
-  if (path === "/api/v1" || path === "/api") {
+  if (path === "/v1" || path === "") {
     data = indice();
     kind = "indice";
-  } else if (path === "/api/v1/salud" || path === "/api/salud") {
+  } else if (path === "/salud" || path === "/v1/salud") {
     data = await salud(env);
     kind = "salud";
-  } else if (path === "/api/v1/buscar") {
+  } else if (path === "/v1/empresas" || path === "/v1/organos") {
+    const body = request.method === "POST" ? await readJson(request) : Object.fromEntries(url.searchParams);
+    data = await buscarEntidad(env, path.endsWith("empresas") ? "empresa" : "organo", body);
+    kind = "entidades";
+  } else if (path === "/v1/catalogos") {
+    data = { catalogos: Object.keys(CATALOGOS).sort() };
+    kind = "json";
+  } else if (path === "/v1/buscar") {
     const body = request.method === "POST" ? await readJson(request) : queryToBody(url);
     data = await buscar(env, body);
     kind = "busqueda";
-  } else if ((match = m(/^\/api\/v1\/licitacion\/([^/]+)$/))) {
+  } else if ((match = m(/^\/v1\/licitacion\/([^/]+)$/))) {
     data = await licitacion(env, decodeURIComponent(match[1]));
     kind = "licitacion";
-  } else if ((match = m(/^\/api\/v1\/empresa\/([^/]+)$/))) {
+  } else if ((match = m(/^\/v1\/empresa\/([^/]+)$/))) {
     data = await perfil(env, "adjudicatario_nif", decodeURIComponent(match[1]), url);
     kind = "perfil";
-  } else if ((match = m(/^\/api\/v1\/organo\/([^/]+)$/))) {
+  } else if ((match = m(/^\/v1\/organo\/([^/]+)$/))) {
     data = await perfil(env, "organo_id", decodeURIComponent(match[1]), url);
     kind = "perfil";
-  } else if ((match = m(/^\/api\/v1\/similares\/([^/]+)$/))) {
+  } else if ((match = m(/^\/v1\/similares\/([^/]+)$/))) {
     data = await similares(env, decodeURIComponent(match[1]));
     kind = "busqueda";
-  } else if ((match = m(/^\/api\/v1\/catalogos\/([^/]+)$/))) {
+  } else if ((match = m(/^\/v1\/catalogos\/([^/]+)$/))) {
     data = await catalogo(env, match[1]);
     kind = "catalogo";
   } else {
-    throw new HttpError(404, "Ruta no encontrada. Ver /docs");
+    throw new HttpError(404, `Ruta no encontrada. Ver https://${API_HOST}/docs`);
   }
 
   if (wantsMarkdown(request, url)) {
@@ -139,28 +181,19 @@ function indice() {
   return {
     nombre: "licit",
     descripcion: "API de licitaciones publicas de Espana (datos PLACSP).",
-    documentacion: "https://licit.es/docs",
-    endpoints: [
-      "POST /api/v1/buscar",
-      "GET /api/v1/licitacion/{id}",
-      "GET /api/v1/empresa/{nif}",
-      "GET /api/v1/organo/{id}",
-      "GET /api/v1/similares/{id}",
-      "GET /api/v1/catalogos/{tipo}",
-      "GET /api/v1/salud",
-    ],
+    documentacion: `https://${API_HOST}/docs`,
+    openapi: `https://${API_HOST}/openapi.json`,
     datos_completos: "https://licit.es/data/index.json",
   };
 }
 
 async function salud(env) {
-  const row = await env.DB.prepare(
-    `SELECT count(*) AS licitaciones, min(fecha_publicacion) AS desde,
-            max(fecha_actualizacion) AS ultima_actualizacion,
-            (SELECT valor FROM meta WHERE clave = 'ultima_sync') AS ultima_sync
-     FROM licitacion`,
-  ).first();
-  return { estado: "ok", ...row };
+  // Aggregates are precomputed by CI after each load (scripts/d1-load.sh).
+  const { results } = await env.DB.prepare(
+    "SELECT clave, valor FROM meta WHERE clave IN ('ultima_sync', 'stats')",
+  ).all();
+  const meta = Object.fromEntries(results.map((r) => [r.clave, r.valor]));
+  return { estado: "ok", ultima_sync: meta.ultima_sync ?? null, ...(parseJson(meta.stats ?? "{}") || {}) };
 }
 
 async function buscar(env, body) {
@@ -233,7 +266,7 @@ async function licitacion(env, id) {
   const row = await env.DB.prepare("SELECT * FROM licitacion WHERE id = ? OR expediente = ? LIMIT 1")
     .bind(id, id)
     .first();
-  if (!row) throw new HttpError(404, "Licitacion no encontrada en la ventana reciente");
+  if (!row) throw new HttpError(404, "Licitacion no encontrada");
   delete row.rid;
   row.historial_estados = parseJson(row.historial_estados);
   row.tiene_documentos = Boolean(row.tiene_documentos);
@@ -270,7 +303,7 @@ async function perfil(env, col, value, url) {
     ).bind(value, limit + 1, offset),
   ]);
   const s = stats.results[0];
-  if (!s || s.contratos === 0) throw new HttpError(404, "Sin licitaciones en la ventana reciente");
+  if (!s || s.contratos === 0) throw new HttpError(404, "Sin licitaciones");
   return {
     id: value,
     nombre: s.nombre,
@@ -287,13 +320,35 @@ async function perfil(env, col, value, url) {
   };
 }
 
+async function buscarEntidad(env, tipo, body) {
+  const q = typeof body.q === "string" ? body.q.trim() : "";
+  if (q.length < 2) throw new HttpError(422, "q debe tener al menos 2 caracteres");
+  const limit = clampLimit(body.limite ?? body.limit);
+  const [idCol, nameCol, nifCol] =
+    tipo === "empresa"
+      ? ["adjudicatario_nif", "adjudicatario", "adjudicatario_nif"]
+      : ["organo_id", "organo", "organo_nif"];
+  const { results } = await env.DB.prepare(
+    `SELECT ${idCol} AS id, max(${nameCol}) AS nombre, max(${nifCol}) AS nif,
+            count(*) AS licitaciones
+     FROM licitacion
+     WHERE ${idCol} IS NOT NULL AND (${nameCol} LIKE ? OR ${nifCol} = ?)
+     GROUP BY ${idCol} ORDER BY licitaciones DESC LIMIT ?`,
+  )
+    .bind(`%${q}%`, q.toUpperCase(), limit)
+    .all();
+  return tipo === "empresa"
+    ? results.map(({ id, nombre, licitaciones }) => ({ id, nombre, contratos: licitaciones }))
+    : results;
+}
+
 async function similares(env, id) {
   const base = await env.DB.prepare(
     "SELECT id, cpv_principal, presupuesto_sin_iva FROM licitacion WHERE id = ?",
   )
     .bind(id)
     .first();
-  if (!base) throw new HttpError(404, "Licitacion no encontrada en la ventana reciente");
+  if (!base) throw new HttpError(404, "Licitacion no encontrada");
   if (!base.cpv_principal) return { total: 0, resultados: [], cursor_siguiente: null };
   const amount = base.presupuesto_sin_iva || 0;
   const { results } = await env.DB.prepare(
@@ -451,12 +506,13 @@ function toMarkdown(kind, d) {
         `- **Adjudicatario:** ${cell(d.adjudicatario)} (${cell(d.adjudicatario_nif)}) · ${money(d.importe_adjudicacion)}`,
         `- **PLACSP:** ${cell(d.url_place)}`,
         "",
-        d.descripcion ? `## Descripción\n\n${d.descripcion}\n` : "",
       ].join("\n");
     case "perfil":
       return `# ${cell(d.nombre)}\n\n- **Contratos:** ${d.stats.contratos}\n- **Importe total:** ${money(d.stats.importe_total)}\n- **Baja media:** ${d.stats.baja_media_pct == null ? DASH : `${d.stats.baja_media_pct}%`}\n\n## Licitaciones\n\n${table(d.licitaciones)}\n`;
     case "catalogo":
       return `# Catálogo: ${d.tipo}\n\n| Valor | N |\n|---|---|\n${d.valores.map((v) => `| ${cell(v.valor)} | ${v.n} |`).join("\n")}\n`;
+    case "entidades":
+      return `| Nombre | ID | N |\n|---|---|---|\n${d.map((e) => `| ${cell(e.nombre)} | ${e.id} | ${e.contratos ?? e.licitaciones} |`).join("\n")}\n`;
     default:
       return "```json\n" + JSON.stringify(d, null, 2) + "\n```\n";
   }
