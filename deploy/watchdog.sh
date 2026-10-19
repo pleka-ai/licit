@@ -8,8 +8,8 @@ set -euo pipefail
 COMPOSE_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$COMPOSE_DIR/.." && pwd)"
 COMPOSE="docker compose --env-file $PROJECT_DIR/.env -f $COMPOSE_DIR/docker-compose.yml"
-LOG="/var/log/placsp-watchdog.log"
-STATE_DIR="/tmp/placsp-watchdog"
+LOG="/var/log/licit-watchdog.log"
+STATE_DIR="/tmp/licit-watchdog"
 mkdir -p "$STATE_DIR"
 
 # Load .env from project root for DISCORD_WEBHOOK_URL

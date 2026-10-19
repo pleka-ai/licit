@@ -1,15 +1,15 @@
 #!/bin/bash
 set -e
 
-# Deploy or update placsp-browser on the server.
+# Deploy or update licit on the server.
 # Run as deploy user (not root).
 
-REPO_DIR="$HOME/placsp-browser"
+REPO_DIR="$HOME/licit"
 DEPLOY_DIR="$REPO_DIR/deploy"
 
 if [ ! -d "$REPO_DIR" ]; then
   echo "Clonando repositorio..."
-  git clone https://github.com/adf/placsp-browser.git "$REPO_DIR"
+  git clone https://github.com/pleka-ai/licit.git "$REPO_DIR"
 else
   echo "Actualizando repositorio..."
   cd "$REPO_DIR" && git pull --ff-only

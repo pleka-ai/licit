@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Zero-downtime deploy for placsp-browser.
+# Zero-downtime deploy for licit.
 # Called by GitHub Actions after tests pass on main.
 
 COMPOSE_FILE="$(cd "$(dirname "$0")" && pwd)/docker-compose.yml"
