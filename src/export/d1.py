@@ -7,9 +7,9 @@ Two modes:
 * ``--todo`` (historico): every row in the database, used when back-filling
   an archived year on a fresh Postgres.
 
-Upserts never let an older snapshot overwrite a newer one, keep the earliest
-``fecha_publicacion`` and merge ``historial_estados``, so archived years and
-the live window can be loaded in any order.
+Upserts take each field from the newest snapshot, but always keep the earliest
+``fecha_publicacion`` and merge ``historial_estados``, so archived years and the
+live window can be loaded in any order.
 
 Usage::
 
@@ -62,8 +62,14 @@ _SPECIAL_SET = {
     ),
     "historial_estados": _MERGED_HISTORIAL,
 }
+_NEWER = "excluded.fecha_actualizacion >= licitacion.fecha_actualizacion"
 _UPDATE_SET = ", ".join(
-    f"{c}={_SPECIAL_SET.get(c, f'excluded.{c}')}" for c in D1_COLS if c != "id"
+    f"{c}="
+    + _SPECIAL_SET.get(
+        c, f"CASE WHEN {_NEWER} THEN excluded.{c} ELSE licitacion.{c} END"
+    )
+    for c in D1_COLS
+    if c != "id"
 )
 
 
@@ -86,8 +92,7 @@ def upsert_statement(row: dict[str, Any]) -> str:
     vals = ", ".join(sql_literal(row[c]) for c in D1_COLS)
     return (
         f"INSERT INTO licitacion ({cols}) VALUES ({vals}) "
-        f"ON CONFLICT(id) DO UPDATE SET {_UPDATE_SET} "
-        "WHERE excluded.fecha_actualizacion >= licitacion.fecha_actualizacion;"
+        f"ON CONFLICT(id) DO UPDATE SET {_UPDATE_SET};"
     )
 
 

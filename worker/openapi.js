@@ -7,7 +7,10 @@ const jsonOrMd = (schema) => ({
   "text/markdown": { schema: { type: "string" } },
 });
 const ok = (description, schema) => ({ description, content: jsonOrMd(schema) });
-const notFound = { description: "No encontrado", content: { "application/json": { schema: ref("Error") } } };
+const errorResp = (description) => ({ description, content: { "application/json": { schema: ref("Error") } } });
+const notFound = errorResp("No encontrado");
+const badRequest = errorResp("Petición inválida (JSON, cursor o texto de búsqueda)");
+const unprocessable = errorResp("Parámetros inválidos (q demasiado corto)");
 const idParam = (name, description) => ({
   name,
   in: "path",
@@ -85,7 +88,7 @@ export const OPENAPI = {
             },
           },
         },
-        responses: { 200: ok("Resultados", ref("RespuestaBusqueda")), 400: notFound },
+        responses: { 200: ok("Resultados", ref("RespuestaBusqueda")), 400: badRequest },
       },
     },
     "/v1/licitacion/{licitacion_id}": {
@@ -101,7 +104,7 @@ export const OPENAPI = {
         tags: ["Empresas"],
         summary: "Buscar empresas adjudicatarias",
         requestBody: entitySearch("PeticionBusquedaEmpresas"),
-        responses: { 200: ok("Empresas", { type: "array", items: ref("EmpresaResumen") }) },
+        responses: { 200: ok("Empresas", { type: "array", items: ref("EmpresaResumen") }), 422: unprocessable },
       },
     },
     "/v1/empresa/{empresa_id}": {
@@ -117,7 +120,7 @@ export const OPENAPI = {
         tags: ["Organos"],
         summary: "Buscar órganos de contratación",
         requestBody: entitySearch("PeticionBusquedaOrganos"),
-        responses: { 200: ok("Órganos", { type: "array", items: ref("OrganoResumen") }) },
+        responses: { 200: ok("Órganos", { type: "array", items: ref("OrganoResumen") }), 422: unprocessable },
       },
     },
     "/v1/organo/{organo_id}": {

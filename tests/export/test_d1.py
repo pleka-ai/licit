@@ -77,17 +77,26 @@ def test_newer_snapshot_wins_and_history_merges(db: sqlite3.Connection) -> None:
     assert [h["estado"] for h in json.loads(historial)] == ["Publicada", "Adjudicada"]
 
 
-def test_older_snapshot_does_not_overwrite(db: sqlite3.Connection) -> None:
-    db.executescript(
-        upsert_statement(
-            _row(titulo="Nuevo", fecha_actualizacion=datetime(2025, 1, 1, tzinfo=UTC))
-        )
+def test_older_snapshot_does_not_overwrite_but_contributes_history(
+    db: sqlite3.Connection,
+) -> None:
+    newer = _row(
+        titulo="Nuevo",
+        fecha_publicacion=datetime(2025, 1, 1, tzinfo=UTC),
+        fecha_actualizacion=datetime(2025, 1, 1, tzinfo=UTC),
+        historial_estados=json.dumps(
+            [{"estado": "Adjudicada", "fecha": "2025-01-01T00:00:00+00:00"}]
+        ),
     )
+    db.executescript(upsert_statement(newer))
     db.executescript(upsert_statement(_row(titulo="Viejo")))
-    assert db.execute("SELECT count(*), titulo FROM licitacion").fetchone() == (
-        1,
-        "Nuevo",
-    )
+
+    n, titulo, publicada, historial = db.execute(
+        "SELECT count(*), titulo, fecha_publicacion, historial_estados FROM licitacion"
+    ).fetchone()
+    assert (n, titulo) == (1, "Nuevo")
+    assert publicada.startswith("2024-01-01")
+    assert [h["estado"] for h in json.loads(historial)] == ["Publicada", "Adjudicada"]
 
 
 def test_fts_follows_updates(db: sqlite3.Connection) -> None:

@@ -90,5 +90,6 @@ jobs:
 
       - name: Load D1
         run: |
+          npx --yes wrangler@4 d1 execute licit --remote --yes --file worker/schema.sql
           uv run python -m export.d1 build out/d1 --todo
           ./scripts/d1-load.sh out/d1
