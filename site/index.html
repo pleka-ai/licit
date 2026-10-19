@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>licit — licitaciones públicas de España</title>
+  <meta name="description" content="API estructurada para buscar, filtrar y analizar licitaciones de la Plataforma de Contratación del Sector Público.">
+  <meta property="og:title" content="licit — licitaciones públicas de España">
+  <meta property="og:description" content="API abierta sobre los datos de la PLACSP, pensada para desarrolladores, analistas y agentes de IA.">
+  <meta property="og:url" content="https://licit.es">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23111'/><text x='16' y='23' font-family='monospace' font-size='20' font-weight='700' fill='%23fff' text-anchor='middle'>l</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a href="/" class="brand">licit</a>
+      <div class="nav-links">
+        <a href="https://api.licit.es/docs">API</a>
+        <a href="https://api.licit.es/registro">Registro</a>
+        <a href="https://github.com/pleka-ai/licit" rel="noopener">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <div class="container">
+        <h1>licit</h1>
+        <p>API estructurada de licitaciones públicas de España. Búsqueda, filtrado e inteligencia competitiva sobre datos de la PLACSP.</p>
+        <div class="hero-actions">
+          <a href="https://api.licit.es/docs" class="btn">Documentación</a>
+          <a href="https://github.com/pleka-ai/licit" class="btn" rel="noopener">Código fuente</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="features">
+      <div class="container">
+        <h2>Qué ofrece</h2>
+        <ul>
+          <li><strong>Búsqueda full-text en español</strong> con filtros por CPV, NUTS, tipo de contrato, estado, importe y más</li>
+          <li><strong>Detalle completo</strong> de cada licitación: criterios de adjudicación, requisitos de solvencia, lotes y documentos</li>
+          <li><strong>Perfiles de órganos y empresas</strong> con estadísticas de contratación, importes y CPV frecuentes</li>
+          <li><strong>Inteligencia competitiva</strong>: licitaciones similares, estadísticas de precios y adjudicatarios frecuentes</li>
+          <li><strong>Respuestas para agentes</strong>: JSON denso o Markdown por negociación de contenido, códigos CODICE resueltos a etiquetas legibles</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2>Ejemplo</h2>
+        <pre><code>curl -X POST https://api.licit.es/api/v1/buscar \
+  -H 'Content-Type: application/json' \
+  -d '{"q": "desarrollo software",
+       "filtros": {"tipo_contrato": ["Servicios"]},
+       "limit": 5}'</code></pre>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2>Endpoints</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Método</th><th>Ruta</th><th>Descripción</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">POST</td><td class="mono">/buscar</td><td>Texto libre + filtros + cursor</td></tr>
+              <tr><td class="mono">GET</td><td class="mono">/licitacion/{id}</td><td>Detalle completo</td></tr>
+              <tr><td class="mono">GET</td><td class="mono">/empresa/{nif}</td><td>Perfil de empresa</td></tr>
+              <tr><td class="mono">GET</td><td class="mono">/organo/{id}</td><td>Perfil de órgano</td></tr>
+              <tr><td class="mono">GET</td><td class="mono">/similares/{id}</td><td>Licitaciones similares</td></tr>
+              <tr><td class="mono">GET</td><td class="mono">/catalogos/{tipo}</td><td>Valores válidos para filtros</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="problem">
+      <div class="container">
+        <h2>Por qué licit</h2>
+        <p>
+          La PLACSP publica datos de contratación pública a través de feeds Atom sin capacidad de filtrado.
+          Las alternativas existentes forman parte de planes enterprise de plataformas privadas.
+          licit estructura estos datos en una API abierta, pensada para desarrolladores, analistas y agentes.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2>Stack</h2>
+        <ul class="stack">
+          <li>FastAPI + asyncpg + PostgreSQL 16</li>
+          <li>ETL incremental de feeds ATOM CODICE</li>
+          <li>Búsqueda con tsvector en español + pg_trgm</li>
+          <li>Docker Compose + Caddy</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <span>licit &mdash; datos de la <a href="https://contrataciondelestado.es" rel="noopener">PLACSP</a></span>
+      <a href="https://github.com/pleka-ai/licit" rel="noopener">GitHub</a>
+    </div>
+  </footer>
+</body>
+</html>
