@@ -37,6 +37,6 @@ apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 systemctl enable docker
 echo "Docker instalado (auto-start on boot enabled)."
 
-# Add deploy user to docker group (replace 'adf' with your user)
-usermod -aG docker adf
-echo "Usuario adf anadido al grupo docker."
+# Add deploy user to docker group (replace 'licit' with your user)
+usermod -aG docker licit
+echo "Usuario licit anadido al grupo docker."

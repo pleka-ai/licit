@@ -1,5 +1,5 @@
 [project]
-name = "placsp-browser"
+name = "licit"
 version = "0.1.0"
 description = "API y ETL para explorar licitaciones de la PLACSP"
 readme = "README.md"

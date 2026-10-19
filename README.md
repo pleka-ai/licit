@@ -1,4 +1,6 @@
-# placsp-browser
+# licit
+
+Landing: [licit.es](https://licit.es)
 
 API + ETL para explorar datos de licitaciones de la [Plataforma de Contratación del Sector Público](https://contrataciondelestado.es).
 
@@ -50,7 +52,18 @@ curl https://api.licit.es/api/v1/catalogos/tipo_contrato
 - **Búsqueda**: tsvector español + pg_trgm para fuzzy
 - **Deploy**: Docker Compose + Caddy (auto-HTTPS) en Hetzner
 
-## Deploy
+## Landing
+
+Página estática en `site/`, servida como Worker de assets estáticos en Cloudflare (`wrangler.jsonc`, Worker `licit`) y desplegada por `.github/workflows/pages.yml` en cada push a `main` que toque `site/`. Necesita los secrets `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`.
+
+```bash
+npx wrangler deploy
+```
+
+## Deploy de la API
+
+Manual (`workflow_dispatch` en `.github/workflows/deploy.yml`).
+
 
 1. Crear A record DNS: `api.licit.es → <IP del servidor>`
 2. Rellenar variables en `deploy/cloud-init.yml`
@@ -58,8 +71,8 @@ curl https://api.licit.es/api/v1/catalogos/tipo_contrato
 4. Tras boot, seed inicial:
 
 ```bash
-ssh adf@<ip>
-cd placsp-browser/deploy
+ssh licit@<ip>
+cd licit/deploy
 docker compose exec etl-cron sh -c \
   "cd /app && PYTHONPATH=src uv run python -m etl.handlers.feed_reader --seed"
 ```
