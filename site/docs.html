@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="es" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>API — licit</title>
+  <meta name="description" content="Documentación de la API pública de licit: búsqueda y detalle de licitaciones públicas de España.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23111'/><text x='16' y='23' font-family='monospace' font-size='20' font-weight='700' fill='%23fff' text-anchor='middle'>l</text></svg>">
+  <link rel="stylesheet" href="style.css">
+  <script>document.documentElement.classList.replace("no-js","js")</script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a href="/" class="brand">licit</a>
+      <div class="nav-links">
+        <a href="/explorar">Explorar</a>
+        <a href="/docs" aria-current="page">API</a>
+        <a href="https://github.com/pleka-ai/licit" rel="noopener">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <section class="explorer">
+      <div class="container">
+        <h1 class="reveal">API<span class="cursor">_</span></h1>
+        <p class="lead reveal">Abierta, sin registro. Base URL <code>https://licit.es/api/v1</code>. Cubre la ventana reciente (últimos 12 meses); para el histórico completo usa el <a href="/explorar">explorador</a> o descarga los <a href="/data/index.json">Parquet</a>.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2>Para agentes</h2>
+        <p>Todas las rutas devuelven JSON. Envía <code>Accept: text/markdown</code> (o añade <code>?formato=md</code>) para recibir Markdown compacto, listo para un LLM.</p>
+        <div class="terminal"><div class="terminal-bar"><span></span><span></span><span></span></div>
+<pre><code>curl -H 'Accept: text/markdown' \
+  'https://licit.es/api/v1/buscar?q=ciberseguridad&amp;limit=5'</code></pre></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2>POST /buscar</h2>
+        <p>Texto libre (full-text en español, por prefijo) + filtros combinados con AND. Paginación con <code>cursor_siguiente</code>. También acepta GET con los mismos campos como query string.</p>
+        <div class="terminal"><div class="terminal-bar"><span></span><span></span><span></span></div>
+<pre><code>curl -X POST https://licit.es/api/v1/buscar \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "q": "mantenimiento ascensores",
+    "filtros": {
+      "tipo_contrato": ["Servicios"],
+      "estado": ["En plazo"],
+      "cpv_prefijo": "50",
+      "importe_min": 50000,
+      "importe_max": 500000,
+      "fecha_publicacion_desde": "2026-01-01",
+      "ccaa": "Madrid",
+      "organo": "Ayuntamiento",
+      "adjudicatario": "Indra",
+      "financiacion_ue": true
+    },
+    "ordenar": "fecha",
+    "limit": 20
+  }'</code></pre></div>
+        <p class="mt-md"><code>ordenar</code>: <code>fecha</code> (por defecto), <code>importe</code> o <code>relevancia</code> (solo con <code>q</code>). <code>limit</code> hasta 100.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2>Rutas</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Método</th><th>Ruta</th><th>Descripción</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">POST</td><td class="mono">/buscar</td><td>Búsqueda con filtros y cursor</td></tr>
+              <tr><td class="mono">GET</td><td class="mono">/licitacion/{id}</td><td>Ficha de una licitación (UUID o nº de expediente)</td></tr>
+              <tr><td class="mono">GET</td><td class="mono">/empresa/{nif}</td><td>Adjudicaciones, importes, baja media, CPV y órganos frecuentes</td></tr>
+              <tr><td class="mono">GET</td><td class="mono">/organo/{id}</td><td>Licitaciones del órgano, adjudicatarios frecuentes</td></tr>
+              <tr><td class="mono">GET</td><td class="mono">/similares/{id}</td><td>Mismo CPV e importe parecido</td></tr>
+              <tr><td class="mono">GET</td><td class="mono">/catalogos/{tipo}</td><td>Valores válidos: tipo_contrato, estado, procedimiento, tramitacion, organo_tipo, cpv</td></tr>
+              <tr><td class="mono">GET</td><td class="mono">/salud</td><td>Estado y fecha de la última sincronización</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2>Datos abiertos</h2>
+        <p><code>GET /data/index.json</code> lista los ficheros Parquet publicados (licitaciones, lotes, adjudicaciones, CPV y empresas). Se pueden leer directamente con DuckDB, Polars o pandas:</p>
+        <div class="terminal"><div class="terminal-bar"><span></span><span></span><span></span></div>
+<pre><code>duckdb -c "SELECT tipo_contrato, count(*)
+  FROM 'https://licit.es/data/parquet/reciente/licitacion.parquet'
+  GROUP BY 1 ORDER BY 2 DESC"</code></pre></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <span>licit &mdash; datos de la <a href="https://contrataciondelestado.es" rel="noopener">PLACSP</a></span>
+      <a href="https://github.com/pleka-ai/licit" rel="noopener">GitHub</a>
+    </div>
+  </footer>
+  <script src="app.js" defer></script>
+</body>
+</html>

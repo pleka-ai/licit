@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Explorar — licit</title>
+  <meta name="description" content="SQL sobre los datos abiertos de licitaciones públicas, ejecutado en tu navegador con DuckDB.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23111'/><text x='16' y='23' font-family='monospace' font-size='20' font-weight='700' fill='%23fff' text-anchor='middle'>l</text></svg>">
+  <link rel="stylesheet" href="style.css">
+  <script>document.documentElement.classList.replace("no-js","js")</script>
+</head>
+<body>
+  <nav>
+    <div class="container wide">
+      <a href="/" class="brand">licit</a>
+      <div class="nav-links">
+        <a href="/explorar" aria-current="page">Explorar</a>
+        <a href="/docs">API</a>
+        <a href="https://github.com/pleka-ai/licit" rel="noopener">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <section class="explorer">
+      <div class="container wide">
+        <h1 class="reveal">Explorar<span class="cursor">_</span></h1>
+        <p class="lead reveal">SQL sobre los datos de la PLACSP, ejecutado en tu navegador con DuckDB. Nada pasa por un servidor: solo se descargan los trozos de Parquet que la consulta necesita.</p>
+
+        <div class="chips reveal" id="examples"></div>
+
+        <div class="editor reveal">
+          <div class="terminal-bar"><span></span><span></span><span></span><em id="db-status">cargando DuckDB…</em></div>
+          <textarea id="sql" spellcheck="false" aria-label="Consulta SQL"></textarea>
+          <div class="editor-actions">
+            <span class="muted" id="tables"></span>
+            <button class="btn" id="run" disabled>Ejecutar <kbd>⌘↵</kbd></button>
+          </div>
+        </div>
+
+        <p class="muted" id="meta"></p>
+        <div class="table-wrap results" id="results"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container wide">
+      <span>licit &mdash; datos de la <a href="https://contrataciondelestado.es" rel="noopener">PLACSP</a></span>
+      <a href="/data/index.json">Descargar Parquet</a>
+    </div>
+  </footer>
+
+  <script src="app.js" defer></script>
+  <script type="module">
+    import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm";
+
+    const EXAMPLES = [
+      ["Por tipo de contrato", `SELECT tipo_contrato, count(*) AS licitaciones,
+       round(sum(presupuesto_sin_iva) / 1e6, 1) AS millones_eur
+FROM licitacion
+GROUP BY 1 ORDER BY 2 DESC;`],
+      ["Órganos que más licitan", `SELECT organo, count(*) AS licitaciones,
+       round(sum(presupuesto_sin_iva) / 1e6, 1) AS millones_eur
+FROM licitacion
+GROUP BY 1 ORDER BY 3 DESC NULLS LAST
+LIMIT 20;`],
+      ["Empresas con más adjudicaciones", `SELECT adjudicatario, adjudicatario_nif,
+       count(*) AS contratos,
+       round(sum(importe_adjudicacion) / 1e6, 2) AS millones_eur
+FROM adjudicacion
+WHERE adjudicatario_nif IS NOT NULL
+GROUP BY 1, 2 ORDER BY 3 DESC
+LIMIT 20;`],
+      ["Baja media por CPV", `SELECT substr(cpv_principal, 1, 2) AS cpv_division,
+       count(*) AS n,
+       round(avg(100 * (presupuesto_sin_iva - importe_adjudicacion)
+                 / presupuesto_sin_iva), 1) AS baja_media_pct
+FROM licitacion
+WHERE importe_adjudicacion > 0 AND presupuesto_sin_iva > 0
+GROUP BY 1 HAVING n > 5 ORDER BY 3 DESC;`],
+      ["Grandes contratos abiertos", `SELECT fecha_publicacion::DATE AS fecha, titulo, organo,
+       presupuesto_sin_iva, fecha_limite
+FROM licitacion
+WHERE presupuesto_sin_iva > 1e6 AND fecha_limite >= current_date
+ORDER BY presupuesto_sin_iva DESC
+LIMIT 50;`],
+    ];
+
+    const $ = (id) => document.getElementById(id);
+    const sql = $("sql");
+    const run = $("run");
+    let conn;
+
+    const chips = $("examples");
+    EXAMPLES.forEach(([label, q], i) => {
+      const b = document.createElement("button");
+      b.className = "chip";
+      b.textContent = label;
+      b.onclick = () => { sql.value = q; execute(); };
+      chips.appendChild(b);
+      if (i === 0) sql.value = q;
+    });
+
+    async function boot() {
+      const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
+      const workerUrl = URL.createObjectURL(
+        new Blob([`importScripts("${bundle.mainWorker}");`], { type: "text/javascript" }),
+      );
+      const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(workerUrl));
+      await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+      URL.revokeObjectURL(workerUrl);
+      conn = await db.connect();
+
+      const index = await (await fetch("/data/index.json")).json();
+      const byTable = {};
+      for (const f of index.ficheros) {
+        const m = f.ruta.match(/\/([a-z_]+)\.parquet$/);
+        if (m) (byTable[m[1]] ||= []).push(location.origin + f.ruta);
+      }
+      const names = Object.keys(byTable).sort();
+      for (const t of names) {
+        const files = byTable[t].map((u) => `'${u}'`).join(", ");
+        const src = `read_parquet([${files}], union_by_name = true)`;
+        const dedupe = t === "licitacion" && byTable[t].length > 1
+          ? " QUALIFY row_number() OVER (PARTITION BY id ORDER BY fecha_actualizacion DESC) = 1"
+          : "";
+        await conn.query(`CREATE VIEW ${t} AS SELECT * FROM ${src}${dedupe}`);
+      }
+      $("tables").textContent = names.length ? `Tablas: ${names.join(", ")}` : "Aún no hay datos publicados.";
+      $("db-status").textContent = `DuckDB ${await db.getVersion()} · listo`;
+      run.disabled = names.length === 0;
+      if (names.length) execute();
+    }
+
+    async function execute() {
+      if (!conn || run.disabled) return;
+      run.disabled = true;
+      $("meta").textContent = "Ejecutando…";
+      const t0 = performance.now();
+      try {
+        const res = await conn.query(sql.value);
+        const rows = res.toArray();
+        const cols = res.schema.fields.map((f) => f.name);
+        render(cols, rows.slice(0, 500));
+        const ms = Math.round(performance.now() - t0);
+        $("meta").textContent = `${rows.length.toLocaleString("es-ES")} filas · ${ms} ms${rows.length > 500 ? " · mostrando 500" : ""}`;
+      } catch (e) {
+        $("results").innerHTML = "";
+        $("meta").textContent = String(e.message || e);
+      } finally {
+        run.disabled = false;
+      }
+    }
+
+    function fmt(v) {
+      if (v === null || v === undefined) return "—";
+      if (typeof v === "bigint") return v.toLocaleString("es-ES");
+      if (typeof v === "number") return Number.isInteger(v) ? v.toLocaleString("es-ES") : v.toLocaleString("es-ES", { maximumFractionDigits: 2 });
+      if (v instanceof Date) return v.toISOString().slice(0, 10);
+      return String(v);
+    }
+
+    function render(cols, rows) {
+      const table = document.createElement("table");
+      const head = table.createTHead().insertRow();
+      cols.forEach((c) => { const th = document.createElement("th"); th.textContent = c; head.appendChild(th); });
+      const body = table.createTBody();
+      rows.forEach((r, i) => {
+        const tr = body.insertRow();
+        tr.style.animationDelay = `${Math.min(i, 30) * 15}ms`;
+        cols.forEach((c) => { tr.insertCell().textContent = fmt(r[c]); });
+      });
+      $("results").replaceChildren(table);
+    }
+
+    run.onclick = execute;
+    sql.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); execute(); }
+    });
+    boot().catch((e) => { $("db-status").textContent = `Error: ${e.message || e}`; });
+  </script>
+</body>
+</html>

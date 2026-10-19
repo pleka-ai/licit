@@ -668,3 +668,191 @@ tbody tr:hover {
     animation: none;
   }
 }
+
+/* --- Explorer --- */
+
+.container.wide {
+  max-width: 1040px;
+}
+
+.nav-links a[aria-current="page"] {
+  color: var(--fg);
+}
+
+.explorer {
+  padding: var(--sp-xl) 0;
+}
+
+.explorer h1 {
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.lead {
+  color: var(--fg-muted);
+  max-width: 620px;
+  margin: var(--sp-sm) 0 var(--sp-lg);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-sm);
+  margin-bottom: var(--sp-md);
+}
+
+.chip {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: var(--sp-xs) var(--sp-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, transform 0.15s;
+}
+
+.chip:hover {
+  border-color: var(--fg);
+  color: var(--fg);
+  transform: translateY(-1px);
+}
+
+.editor {
+  background: #111;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.45);
+}
+
+.editor .terminal-bar {
+  align-items: center;
+}
+
+.editor .terminal-bar em {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-style: normal;
+  color: #8a8a8a;
+}
+
+.editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 11em;
+  padding: var(--sp-md);
+  border: 0;
+  resize: vertical;
+  background: transparent;
+  color: #e6e6e6;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  outline: none;
+  tab-size: 2;
+}
+
+.editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-md);
+  padding: var(--sp-sm) var(--sp-md);
+  border-top: 1px solid #262626;
+  font-size: 0.75rem;
+}
+
+.editor-actions .muted {
+  color: #8a8a8a;
+  font-family: var(--font-mono);
+}
+
+.editor .btn {
+  border-color: #e6e6e6;
+  color: #e6e6e6;
+}
+
+.editor .btn:hover {
+  background: #e6e6e6;
+  color: #111;
+}
+
+.editor .btn:disabled {
+  opacity: 0.4;
+  cursor: progress;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  opacity: 0.6;
+  margin-left: var(--sp-xs);
+}
+
+#meta {
+  margin: var(--sp-md) 0 var(--sp-sm);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.results td {
+  font-size: 0.8rem;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.results tbody tr {
+  animation: row-in 0.35s ease both;
+}
+
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+/* --- Live stats on landing --- */
+
+.stat dd {
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-note {
+  margin-top: var(--sp-md);
+  font-size: 0.75rem;
+  color: var(--fg-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .results tbody tr { animation: none; }
+}
+
+.btn-solid {
+  background: var(--accent);
+  color: var(--accent-hover);
+}
+
+.btn-solid:hover {
+  background: transparent;
+  color: var(--accent);
+}
+
+.hero-actions {
+  flex-wrap: wrap;
+}
+
+p code,
+li code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--code-bg);
+  padding: 0.1em 0.3em;
+}
+
+.section .terminal + p,
+.section .terminal {
+  margin-top: var(--sp-md);
+}
