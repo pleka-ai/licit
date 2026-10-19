@@ -41,6 +41,37 @@
     })();
   }
 
+  // Live stats from the published Parquet manifest
+  var stats = document.getElementById("stats");
+  if (stats && window.fetch) {
+    fetch("/data/parquet/reciente/manifest.json")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (m) {
+        if (!m || !m.stats || !m.stats.total_licitaciones) return;
+        stats.classList.remove("hidden");
+        stats.querySelectorAll("[data-count]").forEach(function (el) {
+          var scale = Number(el.getAttribute("data-scale") || 1);
+          countUp(el, Math.round(Number(m.stats[el.getAttribute("data-count")] || 0) / scale));
+        });
+        var upd = m.stats.ultima_actualizacion;
+        document.getElementById("stats-note").textContent =
+          "Ventana reciente de la PLACSP" + (upd ? " · actualizado " + String(upd).slice(0, 10) : "");
+      })
+      .catch(function () {});
+  }
+
+  function countUp(el, target) {
+    var fmt = function (n) { return n.toLocaleString("es-ES"); };
+    if (reduce) { el.textContent = fmt(target); return; }
+    var start = null, dur = 1400;
+    (function step(t) {
+      if (start === null) start = t;
+      var p = Math.min((t - start) / dur, 1);
+      el.textContent = fmt(Math.round(target * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) requestAnimationFrame(step);
+    })(performance.now());
+  }
+
   // Hero background: dot grid with travelling pulses
   var canvas = document.getElementById("hero-bg");
   if (!canvas || reduce) return;

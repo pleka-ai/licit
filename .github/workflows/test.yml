@@ -42,7 +42,7 @@ jobs:
         run: uv run mypy src/
 
       - name: Unit tests
-        run: uv run pytest tests/etl/unit/ --cov=src --cov-branch --cov-fail-under=0
+        run: uv run pytest tests/etl/unit/ tests/export/ --cov=src --cov-branch --cov-fail-under=0
 
   integration:
     runs-on: ubuntu-latest

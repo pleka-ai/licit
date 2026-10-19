@@ -1,9 +1,23 @@
-// Static landing (site/) served by Cloudflare Workers static assets.
+// licit.es: static landing (site/) + public API (worker/) on Cloudflare.
 {
   "name": "licit",
+  "main": "worker/index.js",
   "compatibility_date": "2026-10-01",
-  "assets": { "directory": "./site" },
   "workers_dev": true,
+  "assets": {
+    "directory": "./site",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/data/*", "/docs"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "licit",
+      "database_id": "8dfdc05c-7f8c-4dae-930f-e30c208250fe",
+      "migrations_dir": "worker"
+    }
+  ],
+  "r2_buckets": [{ "binding": "DATA", "bucket_name": "licit-data" }],
   "routes": [
     { "pattern": "licit.es", "custom_domain": true },
     { "pattern": "www.licit.es", "custom_domain": true }
