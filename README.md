@@ -54,10 +54,10 @@ curl https://api.licit.es/api/v1/catalogos/tipo_contrato
 
 ## Landing
 
-Página estática en `site/`, desplegada en Cloudflare Pages (proyecto `licit`) por `.github/workflows/pages.yml` en cada push a `main` que toque `site/`. Necesita los secrets `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`.
+Página estática en `site/`, servida como Worker de assets estáticos en Cloudflare (`wrangler.jsonc`, Worker `licit`) y desplegada por `.github/workflows/pages.yml` en cada push a `main` que toque `site/`. Necesita los secrets `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`.
 
 ```bash
-npx wrangler pages deploy site --project-name=licit
+npx wrangler deploy
 ```
 
 ## Deploy de la API
