@@ -1,12 +1,12 @@
 name: ETL
 
 # Daily PLACSP ingestion on an ephemeral Postgres. State (pg_dump of the
-# rolling window) lives in R2; outputs are Parquet on R2 and basic rows on D1.
+# rolling window) lives in R2; outputs are Parquet on R2 and rows on D1.
+# Archived years (2017+) are loaded by historico.yml.
 #
 # Modes (workflow_dispatch):
-#   diario    — restore state, read live feeds, prune, publish (default/cron)
-#   semilla   — restore state, ingest yearly archives for `anios`, publish
-#   historico — fresh DB, ingest ONE archived year, publish frozen Parquet only
+#   diario  — restore state, read live feeds, prune, publish (default/cron)
+#   semilla — restore state, ingest yearly archives for `anios`, publish
 
 on:
   schedule:
@@ -15,10 +15,10 @@ on:
     inputs:
       modo:
         type: choice
-        options: [diario, semilla, historico]
+        options: [diario, semilla]
         default: diario
       anios:
-        description: "Años (semilla: varios separados por espacio; historico: uno)"
+        description: "Años para semilla, separados por espacio"
         type: string
         default: ""
 
@@ -62,10 +62,9 @@ jobs:
 
       - name: Validate inputs
         run: |
-          case "$MODO" in
-            semilla) [ -n "$ANIOS" ] || { echo "semilla requiere anios"; exit 1; } ;;
-            historico) echo "$ANIOS" | grep -Eq '^[0-9]{4}$' || { echo "historico requiere un solo año"; exit 1; } ;;
-          esac
+          if [ "$MODO" = semilla ] && [ -z "$ANIOS" ]; then
+            echo "semilla requiere anios"; exit 1
+          fi
 
       - uses: astral-sh/setup-uv@v4
         with:
@@ -78,7 +77,6 @@ jobs:
         run: sudo apt-get install -y -qq postgresql-client > /dev/null
 
       - name: Restore state from R2
-        if: env.MODO != 'historico'
         run: |
           if aws s3 cp "$BUCKET/state/licit.dump" state.dump --only-show-errors; then
             pg_restore --no-owner --no-privileges -d "$DATABASE_URL" state.dump
@@ -101,29 +99,21 @@ jobs:
           esac
 
       - name: Prune to rolling window
-        if: env.MODO != 'historico'
         run: uv run python -m export.prune
 
       - name: Publish Parquet
         run: |
-          if [ "$MODO" = historico ]; then
-            uv run python -m export.parquet "out/historico/$ANIOS"
-            aws s3 cp "out/historico/$ANIOS" "$BUCKET/parquet/historico/$ANIOS/" --recursive --only-show-errors
-          else
-            uv run python -m export.parquet out/reciente
-            aws s3 cp out/reciente "$BUCKET/parquet/reciente/" --recursive --only-show-errors
-          fi
+          uv run python -m export.parquet out/reciente
+          aws s3 cp out/reciente "$BUCKET/parquet/reciente/" --recursive --only-show-errors
 
       - name: Sync D1
-        if: env.MODO != 'historico'
         run: |
           npx --yes wrangler@4 d1 execute licit --remote --yes --file worker/schema.sql
-          uv run python -m export.d1 build out/d1.sql out/d1.json
-          npx --yes wrangler@4 d1 execute licit --remote --yes --file out/d1.sql
-          uv run python -m export.d1 commit out/d1.json
+          uv run python -m export.d1 build out/d1
+          ./scripts/d1-load.sh out/d1
+          uv run python -m export.d1 commit out/d1/pending.json
 
       - name: Save state to R2
-        if: env.MODO != 'historico'
         run: |
           pg_dump -Fc -Z 9 --no-owner \
             --exclude-table-data=api_user --exclude-table-data=api_key \
