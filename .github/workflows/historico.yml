@@ -1,0 +1,95 @@
+name: Historico
+
+# One-off back-fill of archived PLACSP years into D1 (full history) and frozen
+# Parquet under parquet/historico/<año>/. Each year runs on its own fresh
+# Postgres; nothing here touches the daily ETL state.
+
+on:
+  workflow_dispatch:
+    inputs:
+      anios:
+        description: "Años separados por espacio"
+        type: string
+        default: "2017 2018 2019 2020 2021 2022 2023 2024"
+
+concurrency:
+  group: historico
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      years: ${{ steps.years.outputs.years }}
+    steps:
+      - id: years
+        env:
+          ANIOS: ${{ inputs.anios }}
+        run: |
+          echo "$ANIOS" | grep -Eq '^ *[0-9]{4}( +[0-9]{4})* *$' || { echo "anios inválidos"; exit 1; }
+          echo "years=$(echo $ANIOS | jq -Rc 'split(" ") | map(select(. != ""))')" >> "$GITHUB_OUTPUT"
+
+  year:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        year: ${{ fromJson(needs.plan.outputs.years) }}
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: licit
+          POSTGRES_USER: licit
+          POSTGRES_PASSWORD: licit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      YEAR: ${{ matrix.year }}
+      DATABASE_URL: postgresql://licit:licit@localhost:5432/licit
+      ENVIRONMENT: ci
+      PYTHONPATH: src
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      AWS_ENDPOINT_URL: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      BUCKET: s3://licit-data
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - run: uv python install 3.12 && uv sync --frozen
+
+      - name: Install Postgres client
+        run: sudo apt-get install -y -qq postgresql-client > /dev/null
+
+      - name: Apply schema
+        run: ./schema/apply.sh "$DATABASE_URL"
+
+      - name: Ingest archive
+        run: uv run python -m etl.handlers.feed_reader --seed --years "$YEAR"
+
+      - name: Publish Parquet
+        run: |
+          uv run python -m export.parquet "out/parquet"
+          aws s3 cp out/parquet "$BUCKET/parquet/historico/$YEAR/" --recursive --only-show-errors
+
+      - name: Load D1
+        run: |
+          npx --yes wrangler@4 d1 execute licit --remote --yes --file worker/schema.sql
+          uv run python -m export.d1 build out/d1 --todo
+          ./scripts/d1-load.sh out/d1

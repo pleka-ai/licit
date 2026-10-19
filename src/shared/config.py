@@ -27,8 +27,7 @@ class Settings(BaseSettings):
 
     # Cloudflare export (Parquet on R2 + basic rows on D1)
     etl_window_days: int = 730
-    d1_window_days: int = 365
-    d1_max_rows_per_run: int = 9000
+    d1_chunk_rows: int = 50000
 
     # API
     api_host: str = "0.0.0.0"

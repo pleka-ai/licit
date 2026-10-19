@@ -44,18 +44,19 @@
   // Live stats from the published Parquet manifest
   var stats = document.getElementById("stats");
   if (stats && window.fetch) {
-    fetch("/data/parquet/reciente/manifest.json")
+    fetch("/api/salud")
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (m) {
-        if (!m || !m.stats || !m.stats.total_licitaciones) return;
+        if (!m || !m.total_licitaciones) return;
         stats.classList.remove("hidden");
         stats.querySelectorAll("[data-count]").forEach(function (el) {
           var scale = Number(el.getAttribute("data-scale") || 1);
-          countUp(el, Math.round(Number(m.stats[el.getAttribute("data-count")] || 0) / scale));
+          countUp(el, Math.round(Number(m[el.getAttribute("data-count")] || 0) / scale));
         });
-        var upd = m.stats.ultima_actualizacion;
+        var desde = m.desde ? String(m.desde).slice(0, 4) : null;
+        var upd = m.ultima_actualizacion ? String(m.ultima_actualizacion).slice(0, 10) : null;
         document.getElementById("stats-note").textContent =
-          "Ventana reciente de la PLACSP" + (upd ? " · actualizado " + String(upd).slice(0, 10) : "");
+          "Datos de la PLACSP" + (desde ? " desde " + desde : "") + (upd ? " · actualizado " + upd : "");
       })
       .catch(function () {});
   }

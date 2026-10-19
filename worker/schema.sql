@@ -1,4 +1,4 @@
--- D1 schema: basic licitacion rows for the public API (rolling window).
+-- D1 schema: basic licitacion rows for the public API (full history since 2017).
 -- Idempotent; applied by CI before every sync.
 
 CREATE TABLE IF NOT EXISTS licitacion (
@@ -6,7 +6,6 @@ CREATE TABLE IF NOT EXISTS licitacion (
   id TEXT NOT NULL UNIQUE,
   expediente TEXT,
   titulo TEXT,
-  descripcion TEXT,
   url_place TEXT,
   fecha_actualizacion TEXT,
   fecha_publicacion TEXT,
@@ -53,26 +52,26 @@ CREATE INDEX IF NOT EXISTS idx_lic_organo ON licitacion (organo_id);
 CREATE INDEX IF NOT EXISTS idx_lic_adjudicatario ON licitacion (adjudicatario_nif);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS licitacion_fts USING fts5(
-  titulo, descripcion, organo, adjudicatario,
+  titulo, organo, adjudicatario,
   content='licitacion', content_rowid='rid',
   tokenize='unicode61 remove_diacritics 2'
 );
 
 CREATE TRIGGER IF NOT EXISTS licitacion_ai AFTER INSERT ON licitacion BEGIN
-  INSERT INTO licitacion_fts (rowid, titulo, descripcion, organo, adjudicatario)
-  VALUES (new.rid, new.titulo, new.descripcion, new.organo, new.adjudicatario);
+  INSERT INTO licitacion_fts (rowid, titulo, organo, adjudicatario)
+  VALUES (new.rid, new.titulo, new.organo, new.adjudicatario);
 END;
 
 CREATE TRIGGER IF NOT EXISTS licitacion_ad AFTER DELETE ON licitacion BEGIN
-  INSERT INTO licitacion_fts (licitacion_fts, rowid, titulo, descripcion, organo, adjudicatario)
-  VALUES ('delete', old.rid, old.titulo, old.descripcion, old.organo, old.adjudicatario);
+  INSERT INTO licitacion_fts (licitacion_fts, rowid, titulo, organo, adjudicatario)
+  VALUES ('delete', old.rid, old.titulo, old.organo, old.adjudicatario);
 END;
 
-CREATE TRIGGER IF NOT EXISTS licitacion_au AFTER UPDATE ON licitacion BEGIN
-  INSERT INTO licitacion_fts (licitacion_fts, rowid, titulo, descripcion, organo, adjudicatario)
-  VALUES ('delete', old.rid, old.titulo, old.descripcion, old.organo, old.adjudicatario);
-  INSERT INTO licitacion_fts (rowid, titulo, descripcion, organo, adjudicatario)
-  VALUES (new.rid, new.titulo, new.descripcion, new.organo, new.adjudicatario);
+CREATE TRIGGER IF NOT EXISTS licitacion_au AFTER UPDATE OF titulo, organo, adjudicatario ON licitacion BEGIN
+  INSERT INTO licitacion_fts (licitacion_fts, rowid, titulo, organo, adjudicatario)
+  VALUES ('delete', old.rid, old.titulo, old.organo, old.adjudicatario);
+  INSERT INTO licitacion_fts (rowid, titulo, organo, adjudicatario)
+  VALUES (new.rid, new.titulo, new.organo, new.adjudicatario);
 END;
 
 CREATE TABLE IF NOT EXISTS meta (
