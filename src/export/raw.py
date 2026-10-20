@@ -191,7 +191,7 @@ RAW_TABLES: dict[str, str] = {
         SELECT {_ENTRY}, v.n AS notice_n,
                row_number() OVER (PARTITION BY x.valid_notice_info_id
                                   ORDER BY x.ctid) AS n,
-               x.publication_media_name
+               x.publication_media_name, x.issue_date
         FROM publication_status x
         JOIN valid_notice_info vi ON vi.id = x.valid_notice_info_id
         JOIN {_ordinal("valid_notice_info")} v ON v.id = vi.id
