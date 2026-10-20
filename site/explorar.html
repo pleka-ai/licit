@@ -146,65 +146,56 @@ LIMIT 50;`,
       },
       {
         title: "Por comunidad",
-        desc: "Presupuesto por lote y CCAA",
-        speed: "millones de filas",
-        sql: `-- presupuesto_lote: un lote por fila (o la licitación entera si no
--- tiene lotes), así que sumar presupuestos no cuenta nada dos veces.
-SELECT g.nuts2 AS comunidad,
-       count(*) AS lotes,
-       round(sum(p.presupuesto_sin_iva) / 1e6) AS millones_eur
-FROM presupuesto_lote p
-JOIN lugar g USING (lugar_key)
-WHERE g.pais_codigo = 'ES' AND g.nuts2 IS NOT NULL
+        desc: "Presupuesto licitado por CCAA",
+        speed: "instantánea",
+        sql: `-- resumen_presupuesto: lotes y presupuesto por año, comunidad,
+-- división CPV y tipo de contrato.
+SELECT comunidad,
+       sum(lotes) AS lotes,
+       round(sum(presupuesto_sin_iva) / 1e6) AS millones_eur
+FROM resumen_presupuesto
+WHERE comunidad IS NOT NULL
 GROUP BY comunidad
 ORDER BY millones_eur DESC;`,
       },
       {
         title: "Baja media por sector",
         desc: "Descuento sobre el presupuesto, por división CPV",
-        speed: "millones de filas",
-        sql: `SELECT c.division_codigo AS cpv,
-       any_value(c.division) AS division,
-       count(*) AS adjudicaciones,
-       round(avg(100 * (a.presupuesto_sin_iva - a.importe_sin_iva)
-                 / a.presupuesto_sin_iva), 1) AS baja_media_pct
-FROM adjudicacion a
-JOIN cpv c USING (cpv_key)
-JOIN resultado r USING (resultado_key)
-WHERE r.es_adjudicacion AND a.importe_sin_iva > 0 AND a.presupuesto_sin_iva > 0
+        speed: "instantánea",
+        sql: `-- resumen_adjudicacion guarda sumas: la media es suma / recuento.
+SELECT cpv_division_codigo AS cpv,
+       any_value(cpv_division) AS division,
+       sum(con_baja) AS adjudicaciones,
+       round(sum(suma_baja_pct) / sum(con_baja), 1) AS baja_media_pct
+FROM resumen_adjudicacion
 GROUP BY cpv
-HAVING adjudicaciones > 100
+HAVING sum(con_baja) > 100
 ORDER BY baja_media_pct DESC;`,
       },
       {
         title: "Competencia",
         desc: "Ofertas por procedimiento",
-        speed: "millones de filas",
-        sql: `SELECT l.procedimiento,
-       round(avg(a.num_ofertas), 1) AS ofertas_medias,
-       round(100 * avg((a.num_ofertas = 1)::INT), 1) AS pct_una_sola_oferta
-FROM adjudicacion a
-JOIN licitacion l USING (licitacion_key)
-WHERE a.num_ofertas > 0
-GROUP BY l.procedimiento
-HAVING count(*) > 100
+        speed: "instantánea",
+        sql: `SELECT procedimiento,
+       round(sum(ofertas) / sum(con_ofertas), 1) AS ofertas_medias,
+       round(100 * sum(una_oferta) / sum(con_ofertas), 1) AS pct_una_sola_oferta
+FROM resumen_adjudicacion
+GROUP BY procedimiento
+HAVING sum(con_ofertas) > 100
 ORDER BY ofertas_medias DESC;`,
       },
       {
         title: "Tiempo hasta adjudicar",
-        desc: "Días desde la publicación, por tipo",
-        speed: "millones de filas",
-        sql: `-- ciclo_licitacion: una fila por licitación con las fechas de cada
--- hito de su tramitación.
-SELECT l.tipo_contrato,
-       count(*) AS adjudicadas,
-       median(c.dias_hasta_adjudicacion) AS mediana_dias,
-       quantile_cont(c.dias_hasta_adjudicacion, 0.9) AS p90_dias
-FROM ciclo_licitacion c
-JOIN licitacion l USING (licitacion_key)
-WHERE c.dias_hasta_adjudicacion BETWEEN 0 AND 1000
-GROUP BY l.tipo_contrato
-HAVING adjudicadas > 100
+        desc: "Días desde la publicación, por tipo y año",
+        speed: "instantánea",
+        sql: `-- resumen_plazo: mediana y percentil 90 por año de publicación.
+SELECT tipo_contrato,
+       anio,
+       adjudicadas,
+       mediana_dias,
+       p90_dias
+FROM resumen_plazo
+WHERE anio = year(current_date) - 1 AND adjudicadas > 100
 ORDER BY mediana_dias;`,
       },
       {

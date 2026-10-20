@@ -58,6 +58,10 @@ licitaciones.
 ellas `cargo_vigente` (último movimiento de cada persona en cada cargo cuando es
 un nombramiento) y `adjudicataria_registro` (cada adjudicataria con su sociedad,
 cargos en vigor y días entre su constitución y su primera adjudicación).
+`resumen_adjudicacion` y `resumen_presupuesto` guardan sumas y recuentos (no
+medias) por año, comunidad, división CPV y tipo, así que cualquier agrupación da
+medias exactas; `resumen_plazo` lleva la mediana y el p90 de días hasta adjudicar
+ya calculados por año, porque las medianas no se suman.
 
 ## Convenciones
 
