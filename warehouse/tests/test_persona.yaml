@@ -1,0 +1,24 @@
+test_persona_juridica_y_enlace:
+  model: modelo.persona
+  description: People are grouped by normalized name; a name that matches exactly one company's name links to it, an ambiguous one does not; legal forms mark legal persons.
+  inputs:
+    modelo.sociedad: {rows: [{sociedad_key: -1}]}
+    stage.borme_position:
+      rows:
+        - {doc_id: d1, number: 1, act_n: 1, n: 1, name: OBRAS SL, name_normalized: OBRAS SL}
+        - {doc_id: d1, number: 2, act_n: 1, n: 1, name: OBRAS S.L., name_normalized: OBRAS SL}
+        - {doc_id: d1, number: 3, act_n: 1, n: 1, name: GEMELA SL, name_normalized: GEMELA SL}
+        - {doc_id: d1, number: 4, act_n: 1, n: 1, name: PEREZ ANA, name_normalized: PEREZ ANA}
+    stage.sociedad_nombre:
+      rows:
+        - {sociedad_ref: 'hoja:M 1', nombre_normalizado: OBRAS SL}
+        - {sociedad_ref: 'hoja:M 2', nombre_normalizado: GEMELA SL}
+        - {sociedad_ref: 'hoja:B 2', nombre_normalizado: GEMELA SL}
+  outputs:
+    query:
+      partial: true
+      rows:
+        - {nombre_normalizado: OBRAS SL, es_persona_juridica: true, sociedad_key: 1838055495388572, num_cargos: 2}
+        - {nombre_normalizado: GEMELA SL, es_persona_juridica: true, sociedad_key: -1, num_cargos: 1}
+        - {nombre_normalizado: PEREZ ANA, es_persona_juridica: false, sociedad_key: -1, num_cargos: 1}
+        - {nombre_normalizado: null, es_persona_juridica: false, sociedad_key: -1, num_cargos: 0}

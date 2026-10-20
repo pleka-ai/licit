@@ -28,7 +28,7 @@
         <header class="pg-head">
           <div>
             <h1>Explorar<span class="cursor">_</span></h1>
-            <p class="lead">SQL sobre 1,6 millones de licitaciones públicas desde 2017: licitaciones, lotes, órganos, empresas, CPV, lugares y documentos, con sus presupuestos, adjudicaciones y tramitación, unidos por sus columnas <code>_key</code>. La consulta se ejecuta en tu navegador con DuckDB y solo descarga los trozos de datos que necesita.</p>
+            <p class="lead">SQL sobre 1,6 millones de licitaciones públicas desde 2017 y el Registro Mercantil (BORME) desde 2009: licitaciones, lotes, órganos, empresas, sociedades, sus cargos, CPV, lugares y documentos, con sus presupuestos, adjudicaciones y tramitación, unidos por sus columnas <code>_key</code>. La consulta se ejecuta en tu navegador con DuckDB y solo descarga los trozos de datos que necesita.</p>
           </div>
           <span class="pg-status" id="status" data-state="loading"><i></i><b id="status-text">Descargando motor…</b></span>
         </header>
@@ -208,6 +208,39 @@ HAVING adjudicadas > 100
 ORDER BY mediana_dias;`,
       },
       {
+        title: "Recién creadas",
+        desc: "Ganan antes de cumplir seis meses",
+        speed: "instantánea",
+        sql: `-- Adjudicatarias enlazadas con su sociedad del BORME por el nombre.
+SELECT nombre,
+       fecha_constitucion,
+       primera_adjudicacion,
+       dias_constitucion_a_primera_adjudicacion AS dias,
+       adjudicaciones,
+       round(importe_adjudicado / 1e6, 2) AS millones_eur
+FROM adjudicataria_registro
+WHERE dias_constitucion_a_primera_adjudicacion BETWEEN 0 AND 180
+ORDER BY importe_adjudicado DESC NULLS LAST
+LIMIT 50;`,
+      },
+      {
+        title: "Quién está detrás",
+        desc: "Administradores de las que más ganan",
+        speed: "millones de filas",
+        sql: `-- Cargos en vigor según el BORME de las empresas con más contratos.
+SELECT r.adjudicatario,
+       r.contratos,
+       c.cargo_tipo,
+       c.persona,
+       c.desde
+FROM resumen_empresa r
+JOIN empresa e USING (empresa_key)
+JOIN cargo_vigente c USING (sociedad_key)
+WHERE c.cargo_tipo IN ('Administrador único', 'Consejero delegado', 'Presidente')
+ORDER BY r.contratos DESC, c.cargo_tipo
+LIMIT 50;`,
+      },
+      {
         title: "Buscar por texto",
         desc: "Ciberseguridad en el último año",
         speed: "millones de filas",
@@ -230,8 +263,8 @@ LIMIT 50;`,
     // Order and headings of the table list, by the manifest's group.
     const GROUPS = {
       resumenes: ["Resúmenes", "precalculadas, respuesta instantánea"],
-      entidades: ["Entidades", "licitaciones, lotes, órganos, empresas, CPV, lugares, documentos…"],
-      actividad: ["Actividad", "presupuestos, adjudicaciones, tramitación, cambios de estado…"],
+      entidades: ["Entidades", "licitaciones, lotes, órganos, empresas, sociedades, personas, CPV, lugares…"],
+      actividad: ["Actividad", "presupuestos, adjudicaciones, tramitación, actos y cargos del BORME…"],
     };
     let TABLES = [];
 
@@ -275,11 +308,27 @@ LIMIT 50;`,
       return out + "\n";
     }
 
-    function syncEditor() {
-      hl.innerHTML = highlight(sql.value);
+    function fitEditor() {
       sql.style.height = "auto";
       sql.style.height = `${Math.max(sql.scrollHeight, 160)}px`;
     }
+
+    function syncEditor() {
+      hl.innerHTML = highlight(sql.value);
+      fitEditor();
+    }
+
+    // The height depends on how the text wraps: recompute when the width
+    // changes or the monospace font arrives, not only when the text does.
+    let editorWidth = 0;
+    new ResizeObserver(([entry]) => {
+      const width = entry.contentRect.width;
+      if (width !== editorWidth) {
+        editorWidth = width;
+        fitEditor();
+      }
+    }).observe(sql.parentElement);
+    document.fonts?.ready.then(fitEditor);
 
     function setQuery(q, { runNow = false } = {}) {
       sql.value = q;

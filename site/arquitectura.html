@@ -124,14 +124,14 @@
             <span class="n">1</span>
             <div>
               <h3>Fuente</h3>
-              <p>Los datos son los que publica la Plataforma de Contratación del Sector Público en sus feeds de licitaciones. licit no añade ni modifica información.</p>
+              <p>Los datos son los que publica la Plataforma de Contratación del Sector Público en sus feeds de licitaciones y, para las empresas, los actos inscritos en el Registro Mercantil que publica el BORME. licit no añade ni modifica información.</p>
             </div>
           </li>
           <li class="reveal">
             <span class="n">2</span>
             <div>
               <h3>Actualización diaria</h3>
-              <p>Cada madrugada se descargan las licitaciones nuevas y las que han cambiado y se reconstruyen las tablas: licitaciones, lotes, órganos, empresas, CPV, lugares, documentos y criterios, y su actividad (presupuestos, adjudicaciones, tramitación, cambios de estado…). Los códigos CODICE se traducen a etiquetas legibles y cada licitación conserva su historial de estados.</p>
+              <p>Cada madrugada se descargan las licitaciones nuevas y las que han cambiado y se reconstruyen las tablas: licitaciones, lotes, órganos, empresas, sociedades y sus cargos, CPV, lugares, documentos y criterios, y su actividad (presupuestos, adjudicaciones, tramitación, cambios de estado, actos del Registro Mercantil…). Cada empresa adjudicataria se enlaza con su sociedad del BORME cuando su nombre coincide con el de una sola. Los códigos CODICE se traducen a etiquetas legibles y cada licitación conserva su historial de estados.</p>
             </div>
           </li>
           <li class="reveal">
@@ -187,11 +187,11 @@
           </article>
           <article class="reveal">
             <h3>Cobertura</h3>
-            <p>Licitaciones publicadas desde 2017 en los perfiles de contratante de la PLACSP y en las plataformas autonómicas que agrega.</p>
+            <p>Licitaciones publicadas desde 2017 en los perfiles de contratante de la PLACSP y en las plataformas autonómicas que agrega. Del BORME, la sección primera (actos inscritos) desde 2009.</p>
           </article>
           <article class="reveal">
             <h3>Modelo de datos</h3>
-            <p>Los Parquet de <code>parquet/modelo/</code> son tablas de entidades (<code>licitacion</code>, <code>lote</code>, <code>organo</code>, <code>empresa</code>, <code>cpv</code>, <code>documento</code>…) y de actividad (<code>ciclo_licitacion</code>, <code>presupuesto_lote</code>, <code>adjudicacion</code>…), unidas por sus columnas <code>_key</code>, que no cambian entre actualizaciones. Su <code>manifest.json</code> describe cada tabla y sus columnas. En <code>parquet/raw/</code> están las tablas tal como las publica la PLACSP.</p>
+            <p>Los Parquet de <code>parquet/modelo/</code> son tablas de entidades (<code>licitacion</code>, <code>lote</code>, <code>organo</code>, <code>empresa</code>, <code>sociedad</code>, <code>persona</code>, <code>cpv</code>, <code>documento</code>…) y de actividad (<code>ciclo_licitacion</code>, <code>presupuesto_lote</code>, <code>adjudicacion</code>, <code>acto_registral</code>, <code>cargo_registral</code>…), unidas por sus columnas <code>_key</code>, que no cambian entre actualizaciones. Su <code>manifest.json</code> describe cada tabla y sus columnas. En <code>parquet/raw/</code> están las tablas tal como las publican la PLACSP y el BORME.</p>
           </article>
           <article class="reveal">
             <h3>Acceso abierto</h3>

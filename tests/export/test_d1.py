@@ -11,7 +11,7 @@ from typing import Any
 import duckdb
 import pytest
 
-from export.d1 import D1_TABLES, build, main, sql_literal
+from export.d1 import BASELINE, BASELINE_MARKER, D1_TABLES, build, main, sql_literal
 from shared.config import Settings
 
 _SCHEMA = Path(__file__).parents[2] / "worker" / "schema.sql"
@@ -29,7 +29,16 @@ _MODEL_COLUMNS: dict[str, str] = {
         "organo_key BIGINT, id VARCHAR, nombre VARCHAR, nif VARCHAR, tipo VARCHAR"
     ),
     "resumen_organo": "organo_key BIGINT, licitaciones BIGINT",
-    "empresa": "empresa_key BIGINT, nif VARCHAR, nombre VARCHAR",
+    "empresa": "empresa_key BIGINT, nif VARCHAR, nombre VARCHAR, sociedad_key BIGINT",
+    "sociedad": (
+        "sociedad_key BIGINT, hoja VARCHAR, nombre VARCHAR, forma_juridica VARCHAR,"
+        " provincia VARCHAR, fecha_constitucion DATE, estado VARCHAR, capital DOUBLE,"
+        " domicilio VARCHAR, fecha_extincion DATE, fecha_ultima_publicacion DATE"
+    ),
+    "cargo_vigente": (
+        "sociedad_key BIGINT, persona_key BIGINT, cargo_tipo VARCHAR, persona VARCHAR,"
+        " cargo VARCHAR, desde DATE, es_persona_juridica BOOLEAN"
+    ),
     "resumen_empresa": "empresa_key BIGINT, contratos BIGINT",
     # licitacion and ciclo_licitacion; test rows list both
     # tables' columns together and _model splits them.
@@ -74,8 +83,31 @@ _BASE: dict[str, list[dict[str, Any]]] = {
     ],
     "resumen_organo": [{"organo_key": 7, "licitaciones": 2}],
     "empresa": [
-        {"empresa_key": -1, "nombre": "Sin adjudicatario"},
-        {"empresa_key": 8, "nif": "B1", "nombre": "Datos SL"},
+        {"empresa_key": -1, "nombre": "Sin adjudicatario", "sociedad_key": -1},
+        {"empresa_key": 8, "nif": "B1", "nombre": "Datos SL", "sociedad_key": 30},
+    ],
+    "sociedad": [
+        {"sociedad_key": -1, "nombre": "Sin datos registrales"},
+        {"sociedad_key": 30, "hoja": "M 1", "nombre": "DATOS SL", "estado": "Activa"},
+        {"sociedad_key": 31, "hoja": "M 2", "nombre": "AJENA SL", "estado": "Activa"},
+    ],
+    "cargo_vigente": [
+        {
+            "sociedad_key": 30,
+            "persona_key": 40,
+            "cargo_tipo": "Administrador único",
+            "persona": "PEREZ ANA",
+            "cargo": "Adm. Unico",
+            "desde": "2020-01-01",
+        },
+        {
+            "sociedad_key": 31,
+            "persona_key": 41,
+            "cargo_tipo": "Consejero",
+            "persona": "GOMEZ LUIS",
+            "cargo": "Consejero",
+            "desde": "2020-01-01",
+        },
     ],
     "resumen_empresa": [{"empresa_key": 8, "contratos": 1}],
     "licitacion": [
@@ -213,6 +245,14 @@ def test_full_load_serves_the_flat_api_view(
         # Placeholder rows are not loaded: the API sees NULLs, as before.
         ("l-11", None, None, "Servicios", "En plazo", None, None, "72000000", None, 0),
     ]
+    # Only the register entries of companies that won tenders reach D1.
+    assert db.execute("SELECT nombre FROM sociedad").fetchall() == [("DATOS SL",)]
+    assert db.execute(
+        "SELECT empresa_key, sociedad_key FROM empresa_registro"
+    ).fetchall() == [(8, 30)]
+    assert db.execute("SELECT persona FROM cargo_vigente").fetchall() == [
+        ("PEREZ ANA",)
+    ]
     # rid follows fecha_publicacion.
     assert [r[0] for r in db.execute("SELECT id FROM licitacion ORDER BY rid")] == [
         "l-10",
@@ -322,3 +362,46 @@ def test_cli_runs_without_postgres_settings(
     model = _model(tmp_path / "m", _BASE)
     main([str(tmp_path / "sql"), str(model)])
     assert sorted(p.name for p in (tmp_path / "sql").glob("d1-*.sql"))
+
+
+def test_baseline_diff_matches_model_diff(tmp_path: Path, settings: Settings) -> None:
+    prev = _model(tmp_path / "ayer", _BASE)
+    today = {k: [dict(r) for r in v] for k, v in _BASE.items()}
+    today["licitacion"][0]["titulo"] = "Mantenimiento de ascensores (lote 2)"
+    today["cargo_vigente"] = today["cargo_vigente"][1:]
+    new = _model(tmp_path / "hoy", today)
+
+    build(tmp_path / "full", prev, None, settings)
+    baseline = tmp_path / "full" / BASELINE
+    assert (baseline / BASELINE_MARKER).exists()
+
+    from_model = build(tmp_path / "d1", new, prev, settings)
+    from_baseline = build(tmp_path / "d2", new, baseline, settings)
+    assert from_baseline == from_model
+
+    def statements(d: Path) -> list[str]:
+        # Drop the trailing meta statement: it carries the time of the run.
+        text = "".join(f.read_text() for f in sorted(d.glob("d1-*.sql")))
+        return [line for line in text.splitlines() if "ultima_sync" not in line]
+
+    assert statements(tmp_path / "d1") == statements(tmp_path / "d2")
+
+
+def test_previous_model_without_new_tables(tmp_path: Path, settings: Settings) -> None:
+    # A model from before the BORME: no sociedad, no cargo_vigente and no
+    # empresa.sociedad_key. Those D1 tables are written in full.
+    old = _model(tmp_path / "antes", _BASE)
+    for name in ("sociedad", "cargo_vigente"):
+        (old / f"{name}.parquet").unlink()
+    duckdb.execute(
+        f"COPY (SELECT empresa_key, nif, nombre FROM '{old}/empresa.parquet')"
+        f" TO '{old}/empresa.parquet.tmp' (FORMAT parquet)"
+    )
+    (old / "empresa.parquet.tmp").rename(old / "empresa.parquet")
+
+    summary = build(tmp_path / "sql", _model(tmp_path / "m", _BASE), old, settings)
+
+    assert summary["sociedad"]["escritas"] == 1
+    assert summary["empresa_registro"]["escritas"] == 1
+    assert summary["cargo_vigente"]["escritas"] == 1
+    assert summary["licitacion"]["escritas"] == 0
