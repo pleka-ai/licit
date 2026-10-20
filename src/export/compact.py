@@ -51,6 +51,13 @@ _SUMMARIES = {
         FROM licitacion WHERE organo_id IS NOT NULL
         GROUP BY organo_id ORDER BY licitaciones DESC
     """,
+    "licitacion_abierta": """
+        SELECT id, fecha_publicacion::DATE AS fecha_publicacion, fecha_limite,
+               titulo, organo, tipo_contrato, estado, presupuesto_sin_iva,
+               cpv_principal, lugar_subentidad, url_place
+        FROM licitacion WHERE fecha_limite >= current_date
+        ORDER BY fecha_limite, presupuesto_sin_iva DESC
+    """,
     "resumen_empresa": """
         SELECT adjudicatario_nif, arg_max(adjudicatario, length(adjudicatario))
                  AS adjudicatario,
