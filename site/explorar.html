@@ -308,11 +308,27 @@ LIMIT 50;`,
       return out + "\n";
     }
 
-    function syncEditor() {
-      hl.innerHTML = highlight(sql.value);
+    function fitEditor() {
       sql.style.height = "auto";
       sql.style.height = `${Math.max(sql.scrollHeight, 160)}px`;
     }
+
+    function syncEditor() {
+      hl.innerHTML = highlight(sql.value);
+      fitEditor();
+    }
+
+    // The height depends on how the text wraps: recompute when the width
+    // changes or the monospace font arrives, not only when the text does.
+    let editorWidth = 0;
+    new ResizeObserver(([entry]) => {
+      const width = entry.contentRect.width;
+      if (width !== editorWidth) {
+        editorWidth = width;
+        fitEditor();
+      }
+    }).observe(sql.parentElement);
+    document.fonts?.ready.then(fitEditor);
 
     function setQuery(q, { runNow = false } = {}) {
       sql.value = q;
