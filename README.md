@@ -40,7 +40,7 @@ PLACSP ──► GitHub Actions (Postgres efímero + ETL Python de src/etl)
              ├─ etl.yml (cron diario): ventana de 730 días, estado pg_dump en R2
              └─ historico.yml (una vez): años archivados 2017+, en paralelo
                     │
-                    ├─► D1 (SQLite + FTS5): todas las licitaciones ──► api.licit.es
+                    ├─► D1 `licit-api` (SQLite + FTS5): todas las licitaciones ──► api.licit.es
                     └─► Parquet en R2 ──► licit.es/explorar (DuckDB-WASM)
 
 Worker "licit" (worker/): api.licit.es (API + Swagger), licit.es (site/ + /data)
@@ -51,6 +51,14 @@ Worker "licit" (worker/): api.licit.es (API + Swagger), licit.es (site/ + /data)
   órganos), así que el ETL diario y cada año histórico generan los mismos ids.
 - **Upserts sin orden**: una versión antigua nunca pisa a una nueva; se conserva
   la primera `fecha_publicacion` y se fusiona `historial_estados`.
+- **Rendimiento**: D1 se rellena en orden cronológico, así que "más recientes
+  primero" es un recorrido inverso por rowid (sin ordenar). Empresas, órganos y
+  catálogos son tablas precalculadas (`worker/derived.sql`) con FTS propio. El
+  Worker cachea respuestas 1 h en el edge y corre junto a D1 (smart placement).
+- **Explorador**: lee `parquet/todo/`, un único Parquet deduplicado por tabla
+  (`export.compact`), regenerado cada día a partir del anterior + la ventana.
+- **Reconstruir D1** (p. ej. tras cambiar el esquema): `export.compact` sobre los
+  Parquet de R2 → `export.d1 parquet` → `scripts/d1-load.sh` contra una base nueva.
 - **Coste**: D1 dentro de lo incluido en Workers Paid; `scripts/d1-load.sh` falla
   si la base supera `D1_MAX_BYTES` (4,5 GB) para no generar coste de almacenamiento.
 

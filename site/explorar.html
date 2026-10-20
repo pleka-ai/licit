@@ -112,20 +112,11 @@ LIMIT 50;`],
       URL.revokeObjectURL(workerUrl);
       conn = await db.connect();
 
-      const index = await (await fetch("/data/index.json")).json();
-      const byTable = {};
-      for (const f of index.ficheros) {
-        const m = f.ruta.match(/\/([a-z_]+)\.parquet$/);
-        if (m) (byTable[m[1]] ||= []).push(location.origin + f.ruta);
-      }
-      const names = Object.keys(byTable).sort();
+      // One compacted, deduplicated file per table (rebuilt daily by CI).
+      const names = ["licitacion", "lote", "adjudicacion", "cpv", "empresa"];
       for (const t of names) {
-        const files = byTable[t].map((u) => `'${u}'`).join(", ");
-        const src = `read_parquet([${files}], union_by_name = true)`;
-        const dedupe = t === "licitacion" && byTable[t].length > 1
-          ? " QUALIFY row_number() OVER (PARTITION BY id ORDER BY fecha_actualizacion DESC) = 1"
-          : "";
-        await conn.query(`CREATE VIEW ${t} AS SELECT * FROM ${src}${dedupe}`);
+        const src = `${location.origin}/data/parquet/todo/${t}.parquet`;
+        await conn.query(`CREATE VIEW ${t} AS SELECT * FROM read_parquet('${src}')`);
       }
       $("tables").textContent = names.length ? `Tablas: ${names.join(", ")}` : "Aún no hay datos publicados.";
       $("db-status").textContent = `DuckDB ${await db.getVersion()} · listo`;
