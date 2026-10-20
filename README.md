@@ -94,8 +94,8 @@ Worker "licit" (worker/): api.licit.es (API + Swagger), licit.es (site/ + /data)
 El esquema de D1 no es compatible con el anterior (tabla plana), y el histórico
 raw no existe todavía. Una vez:
 
-1. Crear una base D1 nueva y vacía (`wrangler d1 create licit-modelo`), poner su
-   id en `wrangler.jsonc` y la variable de repositorio `D1_DATABASE=licit-modelo`.
+1. Crear una base D1 nueva y vacía (`wrangler d1 create licit-datos`), poner su
+   id en `wrangler.jsonc` y la variable de repositorio `D1_DATABASE=licit-datos`.
 2. Lanzar *ETL* en modo `semilla` (o esperar al cron): genera `parquet/raw/` de la
    ventana, el modelo y, al no haber `state/modelo-d1/`, una carga completa.
 3. Lanzar *Historico* con todos los años: añade 2017–2024 al histórico raw y D1
