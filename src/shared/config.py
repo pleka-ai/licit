@@ -26,7 +26,9 @@ class Settings(BaseSettings):
     db_retry_delay: float = 3.0
 
     # BORME (Boletín Oficial del Registro Mercantil, BOE open data)
-    borme_sumario_url: str = "https://www.boe.es/datosabiertos/api/borme/sumario/{fecha}"
+    borme_sumario_url: str = (
+        "https://www.boe.es/datosabiertos/api/borme/sumario/{fecha}"
+    )
     borme_xml_url: str = "https://www.boe.es/diario_borme/xml.php?id={id}"
     borme_max_concurrent: int = 4
     borme_user_agent: str = "licit.es (+https://github.com/pleka-ai/licit)"
