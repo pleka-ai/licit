@@ -1,0 +1,32 @@
+# SQLMesh project: raw PLACSP Parquet (export.raw/compact) → stage → modelo.
+# Run through export.modelo, which points RAW_PATH at a compacted raw set and
+# WAREHOUSE_DB at a fresh DuckDB file.
+gateways:
+  local:
+    connection:
+      type: duckdb
+      database: {{ env_var('WAREHOUSE_DB', 'warehouse.duckdb') }}
+      connector_config:
+        TimeZone: UTC
+    test_connection:
+      type: duckdb
+      connector_config:
+        TimeZone: UTC
+
+default_gateway: local
+
+disable_anonymized_analytics: true
+
+model_defaults:
+  dialect: duckdb
+  start: '2017-01-01'
+  cron: '@daily'
+
+variables:
+  raw_path: {{ env_var('RAW_PATH', 'raw') }}
+
+# Raw tables are read with read_parquet, so column-resolution lint rules
+# cannot see them; model audits cover grain and keys instead.
+linter:
+  enabled: true
+  rules: [invalidselectstarexpansion, noselectstar]
