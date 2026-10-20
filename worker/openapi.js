@@ -243,7 +243,8 @@ export const OPENAPI = {
       RespuestaBusqueda: {
         type: "object",
         properties: {
-          total: { type: "integer" },
+          total: { type: "integer", description: "Exacto hasta 10.000; por encima es un mínimo." },
+          total_exacto: { type: "boolean" },
           resultados: { type: "array", items: ref("LicitacionResumen") },
           cursor_siguiente: nullable("string"),
         },

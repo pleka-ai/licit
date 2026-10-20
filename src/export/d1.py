@@ -11,9 +11,14 @@ Upserts take each field from the newest snapshot, but always keep the earliest
 ``fecha_publicacion`` and merge ``historial_estados``, so archived years and the
 live window can be loaded in any order.
 
+A third mode rebuilds a whole database from a compacted Parquet set
+(:mod:`export.compact`), inserting in ``fecha_publicacion`` order so that
+rowids are chronological (the API reads "newest first" as a reverse rowid scan).
+
 Usage::
 
     PYTHONPATH=src uv run python -m export.d1 build <out_dir> [--todo]
+    PYTHONPATH=src uv run python -m export.d1 parquet <out_dir> <licitacion.parquet>
     for f in <out_dir>/*.sql; do wrangler d1 execute licit --remote --file $f; done
     PYTHONPATH=src uv run python -m export.d1 commit <out_dir>/pending.json
 """
@@ -29,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 import asyncpg
+import duckdb
 
 from export.columns import LICITACION_COLS, licitacion_select
 from shared.config import Settings
@@ -147,6 +153,41 @@ async def build(out_dir: Path, settings: Settings, *, todo: bool) -> int:
     return len(pending)
 
 
+def _insert_rows_statement(rows: list[tuple[Any, ...]]) -> str:
+    values = ",\n".join("(" + ", ".join(sql_literal(v) for v in r) + ")" for r in rows)
+    return f"INSERT INTO licitacion ({', '.join(D1_COLS)}) VALUES\n{values};"
+
+
+def build_from_parquet(out_dir: Path, parquet: Path, settings: Settings) -> int:
+    """Write chunked D1 SQL that fills an EMPTY database from a compacted file.
+
+    Plain multi-row INSERTs (no upsert clause) keep the SQL ~20x smaller; each
+    statement stays under D1's 100 KB statement limit.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect()
+    con.execute("SET TimeZone = 'UTC'")
+    path = str(parquet).replace("'", "''")
+    cur = con.execute(
+        f"SELECT {', '.join(D1_COLS)} FROM read_parquet('{path}')"
+        " ORDER BY fecha_publicacion, id"
+    )
+    n_rows = 0
+    n_files = 0
+    while batch := cur.fetchmany(settings.d1_chunk_rows):
+        n_files += 1
+        rows_per_stmt = settings.d1_rows_per_insert
+        statements = [
+            _insert_rows_statement(batch[i : i + rows_per_stmt])
+            for i in range(0, len(batch), rows_per_stmt)
+        ]
+        (out_dir / f"d1-{n_files:04d}.sql").write_text("\n".join(statements) + "\n")
+        n_rows += len(batch)
+    (out_dir / f"d1-{n_files + 1:04d}.sql").write_text(_meta_statement() + "\n")
+    logger.info("D1 rebuild rows=%d files=%d", n_rows, n_files)
+    return n_rows
+
+
 async def commit(pending_path: Path, settings: Settings) -> None:
     """Record a successfully applied batch in the sync table."""
     pending = json.loads(pending_path.read_text())
@@ -182,10 +223,15 @@ def main(argv: list[str] | None = None) -> None:
     match args:
         case ["build", out_dir, *flags] if set(flags) <= {"--todo"}:
             asyncio.run(build(Path(out_dir), settings, todo="--todo" in flags))
+        case ["parquet", out_dir, parquet]:
+            build_from_parquet(Path(out_dir), Path(parquet), settings)
         case ["commit", pending_path]:
             asyncio.run(commit(Path(pending_path), settings))
         case _:
-            sys.exit("usage: export.d1 build <out_dir> [--todo] | commit <json>")
+            sys.exit(
+                "usage: export.d1 build <out_dir> [--todo]"
+                " | parquet <out_dir> <licitacion.parquet> | commit <json>"
+            )
 
 
 if __name__ == "__main__":

@@ -15,28 +15,31 @@ const RESUMEN_COLS = `id, expediente, titulo, organo, organo_id, tipo_contrato, 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
 
-const CATALOGOS = {
-  tipo_contrato: "tipo_contrato",
-  estado: "estado",
-  procedimiento: "procedimiento",
-  tramitacion: "tramitacion",
-  organo_tipo: "organo_tipo",
-  cpv: "cpv_principal",
-};
+const CATALOGOS = ["cpv", "estado", "organo_tipo", "procedimiento", "tipo_contrato", "tramitacion"];
+
+// Filters on labels are resolved to indexed code columns via the catalogo table.
+const CODE_FILTERS = { tipo_contrato: "type_code", estado: "status_code", procedimiento: "procedure_code" };
+
+// Exact counts stop here: past this point "total" is a lower bound.
+const COUNT_CAP = 10000;
+// Data changes once a day; edge-cache API answers for an hour.
+const CACHE_TTL = 3600;
+const NIF_RE = /^[A-Z0-9][0-9]{7}[A-Z0-9]$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.hostname === "www.licit.es") {
       url.hostname = "licit.es";
       return Response.redirect(url.toString(), 301);
     }
     try {
-      if (url.hostname === API_HOST) return await apiHost(request, env, url);
+      if (url.hostname === API_HOST) return await apiHost(request, env, ctx, url);
       if (url.pathname.startsWith("/data/")) return serveData(request, env, url);
       if (url.pathname === "/docs") return Response.redirect(`https://${API_HOST}/docs`, 302);
       if (url.pathname.startsWith("/api/")) {
-        return await api(request, env, url, url.pathname.slice("/api".length));
+        return await cachedApi(request, env, ctx, url, url.pathname.slice("/api".length));
       }
     } catch (err) {
       return errorResponse(err);
@@ -51,12 +54,12 @@ function errorResponse(err) {
   return json({ detail: "Error interno" }, 500);
 }
 
-async function apiHost(request, env, url) {
+async function apiHost(request, env, ctx, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   if (path === "/") return Response.redirect(`https://${API_HOST}/docs`, 302);
   if (path === "/docs") return swaggerUi();
   if (path === "/openapi.json") return json(OPENAPI, 200, { "cache-control": "public, max-age=3600" });
-  return api(request, env, url, path);
+  return cachedApi(request, env, ctx, url, path);
 }
 
 function swaggerUi() {
@@ -124,14 +127,43 @@ async function dataIndex(env) {
 
 // ---------------------------------------------------------------------- API
 
-async function api(request, env, url, rawPath) {
+// Edge cache in front of the API. POST bodies are hashed into the cache key so
+// repeated searches (the common demo path) never touch D1.
+async function cachedApi(request, env, ctx, url, path) {
+  if (request.method === "OPTIONS") return new Response(null, { headers: cors() });
+  if (request.method !== "GET" && request.method !== "POST") {
+    throw new HttpError(405, "Metodo no permitido");
+  }
+  const body = request.method === "POST" ? await request.text() : "";
+  const keyUrl = new URL(url);
+  keyUrl.searchParams.set("__md", wantsMarkdown(request, url) ? "1" : "0");
+  if (body) keyUrl.searchParams.set("__body", await sha256(body));
+  const key = new Request(keyUrl.toString(), { method: "GET" });
+  const cache = caches.default;
+
+  const hit = await cache.match(key);
+  if (hit) {
+    const res = new Response(hit.body, hit);
+    res.headers.set("x-cache", "HIT");
+    return res;
+  }
+  const res = await api(request, env, url, path, body);
+  if (res.status === 200) {
+    const ttl = path.endsWith("/salud") ? 300 : CACHE_TTL;
+    res.headers.set("cache-control", `public, max-age=${ttl}`);
+    ctx.waitUntil(cache.put(key, res.clone()));
+  }
+  res.headers.set("x-cache", "MISS");
+  return res;
+}
+
+async function api(request, env, url, rawPath, rawBody) {
   const path = rawPath.replace(/\/+$/, "");
   const m = (re) => path.match(re);
+  const body = () => (request.method === "POST" ? parseBody(rawBody) : null);
   let match;
   let data;
   let kind;
-
-  if (request.method === "OPTIONS") return new Response(null, { headers: cors() });
 
   if (path === "/v1" || path === "") {
     data = indice();
@@ -140,15 +172,14 @@ async function api(request, env, url, rawPath) {
     data = await salud(env);
     kind = "salud";
   } else if (path === "/v1/empresas" || path === "/v1/organos") {
-    const body = request.method === "POST" ? await readJson(request) : Object.fromEntries(url.searchParams);
-    data = await buscarEntidad(env, path.endsWith("empresas") ? "empresa" : "organo", body);
+    const b = body() ?? Object.fromEntries(url.searchParams);
+    data = await buscarEntidad(env, path.endsWith("empresas") ? "empresa" : "organo", b);
     kind = "entidades";
   } else if (path === "/v1/catalogos") {
-    data = { catalogos: Object.keys(CATALOGOS).sort() };
+    data = { catalogos: CATALOGOS };
     kind = "json";
   } else if (path === "/v1/buscar") {
-    const body = request.method === "POST" ? await readJson(request) : queryToBody(url);
-    data = await buscar(env, body);
+    data = await buscar(env, body() ?? queryToBody(url));
     kind = "busqueda";
   } else if ((match = m(/^\/v1\/licitacion\/([^/]+)$/))) {
     data = await licitacion(env, decodeURIComponent(match[1]));
@@ -187,13 +218,56 @@ function indice() {
   };
 }
 
-async function salud(env) {
-  // Aggregates are precomputed by CI after each load (scripts/d1-load.sh).
+async function meta(env) {
   const { results } = await env.DB.prepare(
     "SELECT clave, valor FROM meta WHERE clave IN ('ultima_sync', 'stats')",
   ).all();
-  const meta = Object.fromEntries(results.map((r) => [r.clave, r.valor]));
-  return { estado: "ok", ultima_sync: meta.ultima_sync ?? null, ...(parseJson(meta.stats ?? "{}") || {}) };
+  return Object.fromEntries(results.map((r) => [r.clave, r.valor]));
+}
+
+async function salud(env) {
+  // Aggregates are precomputed after each load (worker/derived.sql).
+  const m = await meta(env);
+  return { estado: "ok", ultima_sync: m.ultima_sync ?? null, ...(parseJson(m.stats ?? "{}") || {}) };
+}
+
+// label|code → code, per catalog; cached for the isolate's lifetime.
+let codeCache = null;
+async function codesFor(env, tipo, values) {
+  if (!codeCache || Date.now() - codeCache.at > CACHE_TTL * 1000) {
+    const { results } = await env.DB.prepare(
+      "SELECT tipo, valor, codigo FROM catalogo WHERE codigo IS NOT NULL",
+    ).all();
+    const map = {};
+    for (const r of results) {
+      const t = (map[r.tipo] ||= new Map());
+      t.set(r.valor.toLowerCase(), r.codigo);
+      t.set(String(r.codigo).toLowerCase(), r.codigo);
+    }
+    codeCache = { at: Date.now(), map };
+  }
+  const t = codeCache.map[tipo] || new Map();
+  return [...new Set(values.map((v) => t.get(String(v).trim().toLowerCase())).filter(Boolean))];
+}
+
+// Name (or NIF/UUID) → SQL condition on an indexed id column, resolved inside
+// D1 through the small FTS-indexed entity tables (one bound parameter).
+function entityFilter(tipo, q) {
+  const v = String(q).trim();
+  if (tipo === "empresa") {
+    if (NIF_RE.test(v)) return ["l.adjudicatario_nif = ?", v.toUpperCase()];
+    return [
+      `l.adjudicatario_nif IN (SELECT e.nif FROM empresa_fts f JOIN empresa e ON e.rid = f.rowid
+        WHERE empresa_fts MATCH ? ORDER BY e.contratos DESC LIMIT 100)`,
+      ftsQuery(v),
+    ];
+  }
+  if (UUID_RE.test(v)) return ["l.organo_id = ?", v.toLowerCase()];
+  return [
+    `l.organo_id IN (SELECT o.id FROM organo_fts f JOIN organo o ON o.rid = f.rowid
+      WHERE organo_fts MATCH ? ORDER BY o.licitaciones DESC LIMIT 100)`,
+    ftsQuery(v),
+  ];
 }
 
 async function buscar(env, body) {
@@ -204,6 +278,10 @@ async function buscar(env, body) {
     where.push(sql);
     params.push(...vals);
   };
+  const inList = (col, vals) => {
+    if (vals.length === 0) return add("0");
+    add(`${col} IN (${vals.map(() => "?").join(", ")})`, ...vals);
+  };
 
   let from = "licitacion l";
   const q = typeof body.q === "string" ? body.q.trim() : "";
@@ -211,60 +289,72 @@ async function buscar(env, body) {
     from = "licitacion_fts JOIN licitacion l ON l.rid = licitacion_fts.rowid";
     add("licitacion_fts MATCH ?", ftsQuery(q));
   }
-  if (Array.isArray(f.tipo_contrato) && f.tipo_contrato.length) {
-    const marks = f.tipo_contrato.map(() => "?").join(", ");
-    add(`(l.tipo_contrato IN (${marks}) OR l.type_code IN (${marks}))`, ...f.tipo_contrato, ...f.tipo_contrato);
+  for (const [name, col] of Object.entries(CODE_FILTERS)) {
+    if (Array.isArray(f[name]) && f[name].length) inList(`l.${col}`, await codesFor(env, name, f[name]));
   }
-  if (Array.isArray(f.estado) && f.estado.length) {
-    const marks = f.estado.map(() => "?").join(", ");
-    add(`(l.estado IN (${marks}) OR l.status_code IN (${marks}))`, ...f.estado, ...f.estado);
+  if (f.cpv_prefijo) {
+    const p = String(f.cpv_prefijo).replace(/[^0-9]/g, "");
+    add("l.cpv_principal >= ? AND l.cpv_principal < ?", p, `${p}~`);
   }
-  if (Array.isArray(f.procedimiento) && f.procedimiento.length) {
-    const marks = f.procedimiento.map(() => "?").join(", ");
-    add(`(l.procedimiento IN (${marks}) OR l.procedure_code IN (${marks}))`, ...f.procedimiento, ...f.procedimiento);
-  }
-  if (f.cpv_prefijo) add("l.cpv_principal LIKE ?", `${String(f.cpv_prefijo)}%`);
   if (f.importe_min != null) add("l.presupuesto_sin_iva >= ?", Number(f.importe_min));
   if (f.importe_max != null) add("l.presupuesto_sin_iva <= ?", Number(f.importe_max));
   if (f.fecha_publicacion_desde) add("l.fecha_publicacion >= ?", String(f.fecha_publicacion_desde));
   if (f.fecha_publicacion_hasta) add("l.fecha_publicacion < date(?, '+1 day')", String(f.fecha_publicacion_hasta));
   if (f.ccaa) add("(l.lugar_subentidad LIKE ? OR l.lugar_nuts LIKE ?)", `%${f.ccaa}%`, `%${f.ccaa}%`);
-  if (f.adjudicatario) add("l.adjudicatario LIKE ?", `%${f.adjudicatario}%`);
-  if (f.organo_id) add("l.organo_id = ?", String(f.organo_id));
-  else if (f.organo) add("l.organo LIKE ?", `%${f.organo}%`);
+  if (f.adjudicatario) add(...entityFilter("empresa", f.adjudicatario));
+  if (f.organo_id) add("l.organo_id = ?", String(f.organo_id).toLowerCase());
+  else if (f.organo) add(...entityFilter("organo", f.organo));
   if (f.financiacion_ue === true) add("l.funding_program_code = 'EU'");
   if (f.financiacion_ue === false) add("coalesce(l.funding_program_code, '') <> 'EU'");
 
+  // rid is chronological, so "newest first" is a reverse rowid scan (no sort).
   const order =
     body.ordenar === "importe"
       ? "l.presupuesto_sin_iva DESC"
       : body.ordenar === "relevancia" && q
         ? "licitacion_fts.rank"
-        : "l.fecha_publicacion DESC";
+        : q
+          ? "licitacion_fts.rowid DESC"
+          : "l.rid DESC";
   const limit = clampLimit(body.limit ?? body.limite);
   const offset = decodeCursor(body.cursor);
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const cols = RESUMEN_COLS.split(",").map((c) => `l.${c.trim()}`).join(", ");
 
-  const [rows, total] = await env.DB.batch([
-    env.DB.prepare(`SELECT ${cols} FROM ${from} ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`).bind(
-      ...params,
-      limit + 1,
-      offset,
-    ),
-    env.DB.prepare(`SELECT count(*) AS n FROM ${from} ${whereSql}`).bind(...params),
-  ]);
-  const results = rows.results.slice(0, limit).map(resumen);
+  const rowsStmt = env.DB.prepare(
+    `SELECT ${cols} FROM ${from} ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`,
+  ).bind(...params, limit + 1, offset);
+  let total;
+  let exact = true;
+  let rows;
+  if (!where.length) {
+    const [r, m] = await Promise.all([rowsStmt.all(), meta(env)]);
+    rows = r;
+    total = parseJson(m.stats ?? "{}")?.total_licitaciones ?? 0;
+  } else {
+    const [r, c] = await env.DB.batch([
+      rowsStmt,
+      env.DB.prepare(`SELECT count(*) AS n FROM (SELECT 1 FROM ${from} ${whereSql} LIMIT ?)`).bind(
+        ...params,
+        COUNT_CAP + 1,
+      ),
+    ]);
+    rows = r;
+    total = Math.min(c.results[0].n, COUNT_CAP);
+    exact = c.results[0].n <= COUNT_CAP;
+  }
   return {
-    total: total.results[0].n,
-    resultados: results,
+    total,
+    total_exacto: exact,
+    resultados: rows.results.slice(0, limit).map(resumen),
     cursor_siguiente: rows.results.length > limit ? encodeCursor(offset + limit) : null,
   };
 }
 
 async function licitacion(env, id) {
-  const row = await env.DB.prepare("SELECT * FROM licitacion WHERE id = ? OR expediente = ? LIMIT 1")
-    .bind(id, id)
+  const col = UUID_RE.test(id) ? "id" : "expediente";
+  const row = await env.DB.prepare(`SELECT * FROM licitacion WHERE ${col} = ? ORDER BY rid DESC LIMIT 1`)
+    .bind(col === "id" ? id.toLowerCase() : id)
     .first();
   if (!row) throw new HttpError(404, "Licitacion no encontrada");
   delete row.rid;
@@ -276,6 +366,7 @@ async function licitacion(env, id) {
 async function perfil(env, col, value, url) {
   const limit = clampLimit(url.searchParams.get("limit"));
   const offset = decodeCursor(url.searchParams.get("cursor"));
+  const key = col === "adjudicatario_nif" ? value.toUpperCase() : value.toLowerCase();
   const nameCol = col === "organo_id" ? "organo" : "adjudicatario";
   const otherCol = col === "organo_id" ? "adjudicatario" : "organo";
   const [stats, cpvs, otros, rows] = await env.DB.batch([
@@ -286,26 +377,26 @@ async function perfil(env, col, value, url) {
               avg(CASE WHEN presupuesto_sin_iva > 0 AND importe_adjudicacion IS NOT NULL
                   THEN 100.0 * (presupuesto_sin_iva - importe_adjudicacion) / presupuesto_sin_iva END) AS baja_media_pct
        FROM licitacion WHERE ${col} = ?`,
-    ).bind(value),
+    ).bind(key),
     env.DB.prepare(
       `SELECT cpv_principal AS cpv, max(cpv_principal_desc) AS descripcion, count(*) AS n
        FROM licitacion WHERE ${col} = ? AND cpv_principal IS NOT NULL
        GROUP BY cpv_principal ORDER BY n DESC LIMIT 5`,
-    ).bind(value),
+    ).bind(key),
     env.DB.prepare(
       `SELECT ${otherCol} AS nombre, count(*) AS n FROM licitacion
        WHERE ${col} = ? AND ${otherCol} IS NOT NULL
        GROUP BY ${otherCol} ORDER BY n DESC LIMIT 5`,
-    ).bind(value),
+    ).bind(key),
     env.DB.prepare(
       `SELECT ${RESUMEN_COLS} FROM licitacion WHERE ${col} = ?
-       ORDER BY fecha_publicacion DESC LIMIT ? OFFSET ?`,
-    ).bind(value, limit + 1, offset),
+       ORDER BY rid DESC LIMIT ? OFFSET ?`,
+    ).bind(key, limit + 1, offset),
   ]);
   const s = stats.results[0];
   if (!s || s.contratos === 0) throw new HttpError(404, "Sin licitaciones");
   return {
-    id: value,
+    id: key,
     nombre: s.nombre,
     stats: {
       contratos: s.contratos,
@@ -324,52 +415,62 @@ async function buscarEntidad(env, tipo, body) {
   const q = typeof body.q === "string" ? body.q.trim() : "";
   if (q.length < 2) throw new HttpError(422, "q debe tener al menos 2 caracteres");
   const limit = clampLimit(body.limite ?? body.limit);
-  const [idCol, nameCol, nifCol] =
-    tipo === "empresa"
-      ? ["adjudicatario_nif", "adjudicatario", "adjudicatario_nif"]
-      : ["organo_id", "organo", "organo_nif"];
-  const { results } = await env.DB.prepare(
-    `SELECT ${idCol} AS id, max(${nameCol}) AS nombre, max(${nifCol}) AS nif,
-            count(*) AS licitaciones
-     FROM licitacion
-     WHERE ${idCol} IS NOT NULL AND (${nameCol} LIKE ? OR ${nifCol} = ?)
-     GROUP BY ${idCol} ORDER BY licitaciones DESC LIMIT ?`,
-  )
-    .bind(`%${q}%`, q.toUpperCase(), limit)
+  if (tipo === "empresa") {
+    const sql = NIF_RE.test(q)
+      ? "SELECT nif AS id, nombre, contratos FROM empresa WHERE nif = ? LIMIT ?"
+      : `SELECT e.nif AS id, e.nombre, e.contratos FROM empresa_fts f JOIN empresa e ON e.rid = f.rowid
+         WHERE empresa_fts MATCH ? ORDER BY e.contratos DESC LIMIT ?`;
+    const { results } = await env.DB.prepare(sql)
+      .bind(NIF_RE.test(q) ? q.toUpperCase() : ftsQuery(q), limit)
+      .all();
+    return results;
+  }
+  const sql = NIF_RE.test(q)
+    ? "SELECT id, nombre, nif, licitaciones FROM organo WHERE nif = ? ORDER BY licitaciones DESC LIMIT ?"
+    : `SELECT o.id, o.nombre, o.nif, o.licitaciones FROM organo_fts f JOIN organo o ON o.rid = f.rowid
+       WHERE organo_fts MATCH ? ORDER BY o.licitaciones DESC LIMIT ?`;
+  const { results } = await env.DB.prepare(sql)
+    .bind(NIF_RE.test(q) ? q.toUpperCase() : ftsQuery(q), limit)
     .all();
-  return tipo === "empresa"
-    ? results.map(({ id, nombre, licitaciones }) => ({ id, nombre, contratos: licitaciones }))
-    : results;
+  return results;
 }
 
 async function similares(env, id) {
   const base = await env.DB.prepare(
-    "SELECT id, cpv_principal, presupuesto_sin_iva FROM licitacion WHERE id = ?",
+    "SELECT cpv_principal, presupuesto_sin_iva FROM licitacion WHERE id = ?",
   )
-    .bind(id)
+    .bind(id.toLowerCase())
     .first();
   if (!base) throw new HttpError(404, "Licitacion no encontrada");
-  if (!base.cpv_principal) return { total: 0, resultados: [], cursor_siguiente: null };
+  if (!base.cpv_principal) return { total: 0, total_exacto: true, resultados: [], cursor_siguiente: null };
   const amount = base.presupuesto_sin_iva || 0;
+  const prefix = base.cpv_principal.slice(0, 5);
+  // Newest 200 candidates of the same CPV class (index range), ranked by price in JS.
   const { results } = await env.DB.prepare(
     `SELECT ${RESUMEN_COLS} FROM licitacion
-     WHERE id <> ? AND cpv_principal LIKE ?
+     WHERE cpv_principal >= ? AND cpv_principal < ? AND id <> ?
        AND (? = 0 OR presupuesto_sin_iva BETWEEN ? AND ?)
-     ORDER BY abs(coalesce(presupuesto_sin_iva, 0) - ?) LIMIT 10`,
+     ORDER BY rid DESC LIMIT 200`,
   )
-    .bind(id, `${base.cpv_principal.slice(0, 5)}%`, amount, amount * 0.5, amount * 2, amount)
+    .bind(prefix, `${prefix}~`, id.toLowerCase(), amount, amount * 0.5, amount * 2)
     .all();
-  return { total: results.length, resultados: results.map(resumen), cursor_siguiente: null };
+  const top = results
+    .sort((a, b) => Math.abs((a.presupuesto_sin_iva || 0) - amount) - Math.abs((b.presupuesto_sin_iva || 0) - amount))
+    .slice(0, 10)
+    .map(resumen);
+  return { total: top.length, total_exacto: true, resultados: top, cursor_siguiente: null };
 }
 
 async function catalogo(env, tipo) {
-  const col = CATALOGOS[tipo];
-  if (!col) throw new HttpError(404, `Catalogo desconocido. Validos: ${Object.keys(CATALOGOS).join(", ")}`);
-  const extra = tipo === "cpv" ? ", max(cpv_principal_desc) AS descripcion" : "";
+  if (!CATALOGOS.includes(tipo)) {
+    throw new HttpError(404, `Catalogo desconocido. Validos: ${CATALOGOS.join(", ")}`);
+  }
+  const cols = tipo === "cpv" ? "valor, descripcion, n" : "valor, codigo, n";
   const { results } = await env.DB.prepare(
-    `SELECT ${col} AS valor${extra}, count(*) AS n FROM licitacion
-     WHERE ${col} IS NOT NULL GROUP BY ${col} ORDER BY n DESC LIMIT 500`,
-  ).all();
+    `SELECT ${cols} FROM catalogo WHERE tipo = ? ORDER BY n DESC LIMIT 1000`,
+  )
+    .bind(tipo)
+    .all();
   return { tipo, valores: results };
 }
 
@@ -412,12 +513,17 @@ function queryToBody(url) {
   };
 }
 
-async function readJson(request) {
+function parseBody(text) {
   try {
-    return (await request.json()) || {};
+    return JSON.parse(text || "{}") || {};
   } catch {
     throw new HttpError(400, "JSON invalido");
   }
+}
+
+async function sha256(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function clampLimit(v) {
@@ -456,6 +562,7 @@ function cors() {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, POST, OPTIONS",
     "access-control-allow-headers": "content-type, accept",
+    "access-control-expose-headers": "x-cache",
   };
 }
 

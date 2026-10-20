@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
-# Apply worker/schema.sql and every SQL chunk in a directory to the remote D1
-# database, then refresh the /salud aggregates and make sure the database stays
-# under the included storage (no recurring cost).
+# Apply worker/schema.sql and every SQL chunk in a directory (in name order:
+# licitacion d1-0001… then derived tables d1-9001…, see export.derived) to the
+# remote D1 database, and make sure it stays under the included storage.
 #
-# D1 runs one import at a time per database, so every call is retried with
-# backoff (parallel loads and the daily ETL can collide).
+# D1 runs one import at a time per database: local callers are serialised
+# with a lock, and every call is retried with backoff in case another runner
+# (the daily ETL) is importing.
 #
 # Usage: scripts/d1-load.sh <dir>
-# Env:   D1_MAX_BYTES (default 4.5 GB), CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+# Env:   D1_DATABASE (default licit-api), D1_MAX_BYTES (default 4.5 GB),
+#        CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
 set -euo pipefail
 
 DIR="$1"
-DB="licit"
+DB="${D1_DATABASE:-licit-api}"
 MAX_BYTES="${D1_MAX_BYTES:-4500000000}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WRANGLER="npx --yes wrangler@4"
@@ -32,26 +34,16 @@ d1() {
   return 1
 }
 
+LOCK="${TMPDIR:-/tmp}/licit-d1-${DB}.lock"
+until mkdir "$LOCK" 2> /dev/null; do sleep 5; done
+trap 'rmdir "$LOCK"' EXIT
+
 d1 schema --file "$ROOT/worker/schema.sql"
 
 for f in "$DIR"/d1-*.sql; do
   [ -e "$f" ] || continue
   d1 "$(basename "$f")" --file "$f"
 done
-
-# Precompute landing/health aggregates once per load (read by GET /salud).
-d1 stats --command "
-  INSERT INTO meta (clave, valor)
-  SELECT 'stats', json_object(
-    'total_licitaciones', count(*),
-    'total_organos', count(DISTINCT organo_id),
-    'total_empresas', count(DISTINCT adjudicatario_nif),
-    'importe_total', round(coalesce(sum(presupuesto_sin_iva), 0)),
-    'desde', min(fecha_publicacion),
-    'ultima_actualizacion', max(fecha_actualizacion))
-  FROM licitacion
-  WHERE true
-  ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor;"
 
 SIZE=$($WRANGLER d1 info "$DB" --json | jq -r .database_size)
 echo "D1 size: $((SIZE / 1000000)) MB (limit $((MAX_BYTES / 1000000)) MB)"
