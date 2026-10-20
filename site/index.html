@@ -30,7 +30,7 @@
       <canvas id="hero-bg" aria-hidden="true"></canvas>
       <div class="container">
         <h1 class="reveal">licit<span class="cursor">_</span></h1>
-        <p class="reveal">Licitaciones públicas de España, estructuradas. API abierta y SQL en el navegador sobre los datos de la PLACSP, actualizados cada día.</p>
+        <p class="reveal">Las licitaciones públicas de España desde 2017, con una API y SQL en el navegador. Los datos son los de la PLACSP y se actualizan cada día.</p>
         <div class="hero-actions reveal">
           <a href="/explorar" class="btn btn-solid">Explorar datos</a>
           <a href="https://api.licit.es/docs" class="btn">API</a>
@@ -53,13 +53,13 @@
 
     <section class="features reveal">
       <div class="container">
-        <h2>Qué ofrece</h2>
+        <h2>Qué hay</h2>
         <ul>
-          <li><strong>Búsqueda full-text en español</strong> con filtros por CPV, NUTS, tipo de contrato, estado, importe y más</li>
-          <li><strong>SQL en tu navegador</strong>: DuckDB sobre Parquet abierto, sin servidor y sin registro</li>
-          <li><strong>Perfiles de órganos y empresas</strong> con estadísticas de contratación, importes y CPV frecuentes</li>
-          <li><strong>Inteligencia competitiva</strong>: licitaciones similares, estadísticas de precios y adjudicatarios frecuentes</li>
-          <li><strong>Respuestas para agentes</strong>: JSON denso o Markdown por negociación de contenido, códigos CODICE resueltos a etiquetas legibles</li>
+          <li><strong>Búsqueda de texto en español</strong> con filtros por tipo, estado, CPV, importe, fechas, órgano y adjudicatario.</li>
+          <li><strong>Perfiles de empresas y órganos</strong>: contratos, importes, baja media, CPV y contrapartes más frecuentes.</li>
+          <li><strong>Licitaciones similares</strong> por CPV e importe.</li>
+          <li><strong>Respuestas en JSON o en Markdown</strong>, para que un agente las lea tal cual. Los códigos CODICE llegan traducidos a etiquetas.</li>
+          <li><strong>Todo el histórico en Parquet</strong>, para consultarlo con SQL en el navegador o descargarlo.</li>
         </ul>
       </div>
     </section>
@@ -103,20 +103,21 @@
 
     <section class="problem reveal">
       <div class="container">
-        <h2>Por qué licit</h2>
+        <h2>Por qué</h2>
         <p>
-          La PLACSP publica datos de contratación pública a través de feeds Atom sin capacidad de filtrado.
-          Las alternativas existentes forman parte de planes enterprise de plataformas privadas.
-          licit estructura estos datos en una API abierta, pensada para desarrolladores, analistas y agentes.
+          La PLACSP lo publica todo, pero en feeds ATOM paginados que no se pueden filtrar ni buscar.
+          Para responder a algo tan simple como «qué adjudicó este ayuntamiento en 2024» hay que descargar y procesar años de XML.
+          Las herramientas que lo resuelven son de pago y van dentro de planes para grandes empresas.
+          licit hace ese trabajo una vez al día y deja el resultado abierto.
         </p>
       </div>
     </section>
 
     <section class="section">
       <div class="container">
-        <h2 class="reveal">Sin servidores</h2>
-        <p class="reveal">GitHub Actions procesa los feeds cada noche, Cloudflare sirve la API desde SQLite en el edge y el explorador ejecuta DuckDB en tu navegador. Cero servidores encendidos y cero coste recurrente.</p>
-        <p class="reveal"><a href="/arquitectura">Ver cómo funciona →</a></p>
+        <h2 class="reveal">Cómo está hecho</h2>
+        <p class="reveal">No hay ningún servidor. GitHub Actions procesa los feeds cada noche, Cloudflare sirve la API desde SQLite y el explorador ejecuta DuckDB en tu navegador. El coste mensual es cero.</p>
+        <p class="reveal"><a href="/arquitectura">Cómo funciona, y lo que salió mal →</a></p>
       </div>
     </section>
   </main>
