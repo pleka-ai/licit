@@ -87,6 +87,8 @@ def sql_literal(value: Any) -> str:
         return "1" if value else "0"
     if isinstance(value, int | float | Decimal):
         return str(value)
+    if isinstance(value, datetime) and value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)  # compacted Parquet stores naive UTC
     if isinstance(value, datetime | date | time):
         return "'" + value.isoformat() + "'"
     return "'" + str(value).replace("'", "''") + "'"

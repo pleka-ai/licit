@@ -33,6 +33,33 @@ _CHILDREN = ("lote", "adjudicacion", "cpv")
 # column chunk, so fewer groups means far fewer round trips.
 _COPY_OPTS = "FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 500000"
 _HISTORIAL_TYPE = '[{"fecha": "VARCHAR", "estado": "VARCHAR"}]'
+_TIMESTAMPTZ = ("fecha_publicacion", "fecha_actualizacion")
+
+# Small pre-aggregated tables so the explorer's first queries are instant.
+_SUMMARIES = {
+    "resumen_mensual": """
+        SELECT date_trunc('month', fecha_publicacion)::DATE AS mes, tipo_contrato,
+               count(*) AS licitaciones,
+               round(sum(presupuesto_sin_iva)) AS importe_licitado
+        FROM licitacion GROUP BY ALL ORDER BY mes, tipo_contrato
+    """,
+    "resumen_organo": """
+        SELECT organo_id, arg_max(organo, fecha_actualizacion) AS organo,
+               arg_max(organo_nif, fecha_actualizacion) AS organo_nif,
+               count(*) AS licitaciones,
+               round(sum(presupuesto_sin_iva)) AS importe_licitado
+        FROM licitacion WHERE organo_id IS NOT NULL
+        GROUP BY organo_id ORDER BY licitaciones DESC
+    """,
+    "resumen_empresa": """
+        SELECT adjudicatario_nif, arg_max(adjudicatario, length(adjudicatario))
+                 AS adjudicatario,
+               count(*) AS contratos,
+               round(sum(importe_adjudicacion)) AS importe_adjudicado
+        FROM adjudicacion WHERE adjudicatario_nif IS NOT NULL
+        GROUP BY adjudicatario_nif ORDER BY contratos DESC
+    """,
+}
 
 
 def _files(sources: list[Path], table: str) -> str:
@@ -101,10 +128,14 @@ def compact(out_dir: Path, sources: list[Path]) -> dict[str, object]:
         }
         logger.info("Compacted table=%s rows=%s", name, tables[name]["rows"])
 
+    # Timestamps are written as naive UTC: DuckDB-WASM ships without ICU and
+    # cannot cast TIMESTAMPTZ.
+    lic_cols = ", ".join(
+        f"{c}::TIMESTAMP AS {c}" if c in _TIMESTAMPTZ else c for c in LICITACION_COLS
+    )
     write(
         "licitacion",
-        f"SELECT {', '.join(LICITACION_COLS)} FROM licitacion"
-        " ORDER BY fecha_publicacion, id",
+        f"SELECT {lic_cols} FROM licitacion ORDER BY fecha_publicacion, id",
     )
     for child in _CHILDREN:
         write(
@@ -127,6 +158,11 @@ def compact(out_dir: Path, sources: list[Path]) -> dict[str, object]:
         GROUP BY nif ORDER BY nif
         """,
     )
+
+    adj = out_dir / "adjudicacion.parquet"
+    con.execute(f"CREATE TEMP VIEW adjudicacion AS SELECT * FROM '{adj}'")
+    for name, query in _SUMMARIES.items():
+        write(name, query)
 
     stats = con.execute(
         """

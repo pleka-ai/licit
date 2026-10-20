@@ -55,23 +55,27 @@
   <script type="module">
     import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm";
 
+    // The first examples hit tiny pre-aggregated tables (instant); the rest
+    // scan the 1.6M-row licitacion table in the browser (a few seconds).
     const EXAMPLES = [
-      ["Por tipo de contrato", `SELECT tipo_contrato, count(*) AS licitaciones,
-       round(sum(presupuesto_sin_iva) / 1e6, 1) AS millones_eur
-FROM licitacion
+      ["Evolución mensual", `SELECT year(mes) AS anio, sum(licitaciones) AS licitaciones,
+       round(sum(importe_licitado) / 1e9, 1) AS miles_millones_eur
+FROM resumen_mensual
+GROUP BY 1 ORDER BY 1;`],
+      ["Órganos que más licitan", `SELECT organo, licitaciones,
+       round(importe_licitado / 1e6, 1) AS millones_eur
+FROM resumen_organo
+ORDER BY importe_licitado DESC NULLS LAST
+LIMIT 20;`],
+      ["Empresas con más adjudicaciones", `SELECT adjudicatario, adjudicatario_nif, contratos,
+       round(importe_adjudicado / 1e6, 2) AS millones_eur
+FROM resumen_empresa
+ORDER BY contratos DESC
+LIMIT 20;`],
+      ["Por tipo de contrato", `SELECT tipo_contrato, sum(licitaciones) AS licitaciones,
+       round(sum(importe_licitado) / 1e6, 1) AS millones_eur
+FROM resumen_mensual
 GROUP BY 1 ORDER BY 2 DESC;`],
-      ["Órganos que más licitan", `SELECT organo, count(*) AS licitaciones,
-       round(sum(presupuesto_sin_iva) / 1e6, 1) AS millones_eur
-FROM licitacion
-GROUP BY 1 ORDER BY 3 DESC NULLS LAST
-LIMIT 20;`],
-      ["Empresas con más adjudicaciones", `SELECT adjudicatario, adjudicatario_nif,
-       count(*) AS contratos,
-       round(sum(importe_adjudicacion) / 1e6, 2) AS millones_eur
-FROM adjudicacion
-WHERE adjudicatario_nif IS NOT NULL
-GROUP BY 1, 2 ORDER BY 3 DESC
-LIMIT 20;`],
       ["Baja media por CPV", `SELECT substr(cpv_principal, 1, 2) AS cpv_division,
        count(*) AS n,
        round(avg(100 * (presupuesto_sin_iva - importe_adjudicacion)
@@ -114,7 +118,10 @@ LIMIT 50;`],
 
       // One compacted, deduplicated file per table (rebuilt daily by CI),
       // requested by version so a new upload never mixes with cached ranges.
-      const names = ["licitacion", "lote", "adjudicacion", "cpv", "empresa"];
+      const names = [
+        "licitacion", "lote", "adjudicacion", "cpv", "empresa",
+        "resumen_mensual", "resumen_organo", "resumen_empresa",
+      ];
       const index = await (await fetch("/data/index.json", { cache: "no-store" })).json();
       const version = Object.fromEntries(index.ficheros.map((f) => [f.ruta, f.version]));
       for (const t of names) {

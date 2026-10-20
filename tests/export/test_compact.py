@@ -33,7 +33,10 @@ def _snapshot(path: Path, rows: list[dict[str, object]], lotes: list[str]) -> Pa
         " SELECT 'a' AS licitacion_id, unnest(?::VARCHAR[]) AS titulo",
         [lotes],
     )
-    con.execute("CREATE TABLE adjudicacion AS SELECT 'a' AS licitacion_id, 1 AS n")
+    con.execute(
+        "CREATE TABLE adjudicacion AS SELECT 'a' AS licitacion_id,"
+        " 'B1' AS adjudicatario_nif, 'X' AS adjudicatario, 10.0 AS importe_adjudicacion"
+    )
     con.execute("CREATE TABLE cpv AS SELECT 'a' AS licitacion_id, '45' AS codigo")
     con.execute(
         "CREATE TABLE empresa AS"
@@ -95,3 +98,4 @@ def test_newest_snapshot_wins_with_merged_history(tmp_path: Path) -> None:
     ).fetchall()
     assert lotes == [("lote nuevo",)]
     assert manifest["tablas"]["licitacion"]["rows"] == 1  # type: ignore[index]
+    assert manifest["tablas"]["resumen_empresa"]["rows"] == 1  # type: ignore[index]
