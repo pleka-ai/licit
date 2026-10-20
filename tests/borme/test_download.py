@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import ssl
 from datetime import date
 from pathlib import Path
 
@@ -89,3 +90,23 @@ async def test_unreachable_document_is_reported(
 
     assert result.failed == ["BORME-A-2026-200-28"]
     assert not list((tmp_path / "2026").glob("*.xml"))
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_tls_failure_is_retried(tmp_path: Path, settings: Settings) -> None:
+    respx.get(SUMMARY_URL.format("20261016")).mock(
+        return_value=httpx.Response(
+            200, json=_summary(("BORME-A-2026-200-28", "MADRID"))
+        )
+    )
+    respx.get(XML_URL).mock(
+        side_effect=[
+            ssl.SSLError("record layer failure"),
+            httpx.Response(200, content=b"<documento/>"),
+        ]
+    )
+
+    result = await download(tmp_path, date(2026, 10, 16), date(2026, 10, 16), settings)
+
+    assert (result.downloaded, result.failed) == (1, [])
