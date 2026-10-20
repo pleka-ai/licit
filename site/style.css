@@ -1848,26 +1848,3 @@ li code {
 .arq-split .arq-table table {
   min-width: 0;
 }
-
-.arq-wrong {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--sp-lg);
-}
-
-.arq-wrong article {
-  padding-left: var(--sp-md);
-  border-left: 2px solid var(--error);
-}
-
-.arq-closer {
-  margin-top: var(--sp-lg);
-  font-family: var(--font-mono);
-  color: var(--fg) !important;
-}
-
-@media (max-width: 860px) {
-  .arq-wrong {
-    grid-template-columns: 1fr;
-  }
-}

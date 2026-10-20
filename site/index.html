@@ -105,10 +105,8 @@
       <div class="container">
         <h2>Por qué</h2>
         <p>
-          La PLACSP lo publica todo, pero en feeds ATOM paginados que no se pueden filtrar ni buscar.
-          Para responder a algo tan simple como «qué adjudicó este ayuntamiento en 2024» hay que descargar y procesar años de XML.
-          Las herramientas que lo resuelven son de pago y van dentro de planes para grandes empresas.
-          licit hace ese trabajo una vez al día y deja el resultado abierto.
+          La PLACSP publica los datos en feeds ATOM paginados, sin filtros ni búsqueda.
+          licit los procesa cada día y los expone como API y como Parquet.
         </p>
       </div>
     </section>
@@ -117,7 +115,7 @@
       <div class="container">
         <h2 class="reveal">Cómo está hecho</h2>
         <p class="reveal">No hay ningún servidor. GitHub Actions procesa los feeds cada noche, Cloudflare sirve la API desde SQLite y el explorador ejecuta DuckDB en tu navegador. El coste mensual es cero.</p>
-        <p class="reveal"><a href="/arquitectura">Cómo funciona, y lo que salió mal →</a></p>
+        <p class="reveal"><a href="/arquitectura">Cómo funciona →</a></p>
       </div>
     </section>
   </main>

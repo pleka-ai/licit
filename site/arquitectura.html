@@ -172,7 +172,7 @@
             <span class="n">4</span>
             <div>
               <h3>Cloudflare guarda</h3>
-              <p>Los cambios del día llegan a D1 como <em>upserts</em>; el Parquet y el estado, a R2. Si D1 se acerca al almacenamiento incluido en el plan, el proceso falla a propósito antes de que cueste dinero.</p>
+              <p>Los cambios del día llegan a D1 como <em>upserts</em>; el Parquet y el estado, a R2. Si D1 supera 4,5 GB, el proceso se detiene para no exceder el almacenamiento incluido en el plan.</p>
             </div>
           </li>
           <li class="reveal">
@@ -215,54 +215,33 @@
 
     <section class="arq-section">
       <div class="container wide">
-        <h2 class="reveal">Decisiones</h2>
+        <h2 class="reveal">Decisiones de diseño</h2>
         <div class="arq-cards">
           <article class="reveal">
             <h3>SQLite para servir, DuckDB para analizar</h3>
-            <p>Mi primera idea fue usar DuckDB para todo, también para la API. No encaja: un Worker tiene poca memoria y DuckDB en WebAssembly pesa unos 30 MB en cada arranque en frío. Además, una ficha o una búsqueda leen pocas filas por índice, y ahí SQLite es más rápido. DuckDB se quedó donde sí gana, en las agregaciones: las tablas de empresas tardaban más de 30 s en D1 y tardan 0,7 s en DuckDB.</p>
+            <p>Las fichas y las búsquedas leen pocas filas por índice y las sirve D1 (SQLite). Las agregaciones recorren columnas enteras y las calcula DuckDB, en el ETL y en el navegador. DuckDB no se usa en el Worker por su consumo de memoria y el tamaño del binario WebAssembly.</p>
           </article>
           <article class="reveal">
-            <h3>Un Postgres que vive 14 minutos</h3>
-            <p>El ETL estaba escrito para Postgres. Valoré migrarlo a SQLite, pero eran unas 1.200 líneas muy ligadas a Postgres (tsvector, triggers, jsonb) y no ahorraba nada: el límite real era el almacenamiento, no el motor. Postgres vive en GitHub Actions mientras dura el ETL y su estado viaja como un volcado de 1,2 GB en R2.</p>
+            <h3>Postgres efímero</h3>
+            <p>El ETL usa Postgres. Se levanta en GitHub Actions solo durante la ejecución. El estado entre ejecuciones es un <code>pg_dump</code> en R2 con los dos últimos años.</p>
           </article>
           <article class="reveal">
-            <h3>Ids que no cambian entre cargas</h3>
-            <p>Cada ejecución arranca una base vacía, y los ids eran UUID aleatorios: la misma licitación tenía un id distinto en cada carga. Ahora el id público es un <code>md5</code> de la clave natural de la PLACSP. Lo comprobé cargando el mismo feed en dos bases distintas: 111 de 111 ids iguales.</p>
+            <h3>Identificadores estables</h3>
+            <p>Los ids públicos se derivan de claves naturales de la PLACSP: <code>md5(entry_id)</code> para licitaciones y <code>platform_id</code>, DIR3 o nombre para órganos. Son los mismos en cualquier carga.</p>
           </article>
           <article class="reveal">
-            <h3>El orden de carga hace de índice</h3>
-            <p>Ordenar por fecha los cientos de miles de coincidencias de «servicio» tardaba 20 s. Volví a cargar D1 en orden cronológico, de forma que el rowid sigue la fecha y «lo más reciente primero» es recorrer la tabla al revés. El propio índice de texto devuelve los resultados en ese orden. Ahora tarda 0,4 s.</p>
+            <h3>Orden cronológico</h3>
+            <p>D1 se cargó ordenado por fecha de publicación y las altas diarias se añaden al final. «Más recientes primero» se resuelve recorriendo el rowid en orden inverso, sin ordenar. El índice FTS5 devuelve los resultados en ese mismo orden.</p>
           </article>
           <article class="reveal">
-            <h3>Cargas en cualquier orden</h3>
-            <p>Los años históricos y el día de hoy pueden cargarse en cualquier orden. Cada campo se queda con la versión más nueva, la fecha de publicación con la más antigua y el historial de estados se fusiona. Una carga antigua nunca pisa una reciente.</p>
+            <h3>Upserts independientes del orden</h3>
+            <p>Cada campo toma la versión más reciente, <code>fecha_publicacion</code> la más antigua y <code>historial_estados</code> se fusiona. Las cargas pueden aplicarse en cualquier orden.</p>
           </article>
           <article class="reveal">
-            <h3>Parquet para leerse por HTTP</h3>
-            <p>El navegador pide rangos de bytes y cada uno cuesta unos 170 ms. Con 17 grupos de filas, una consulta de dos columnas hacía 34 peticiones. Ahora son 4 grupos, cada rango se cachea en el edge y la URL lleva la versión del fichero. La primera consulta pasó de 34 s a menos de 0,1 s.</p>
+            <h3>Parquet para HTTP</h3>
+            <p>Un Parquet por tabla, deduplicado y ordenado por fecha, en grupos de 500.000 filas. El navegador lo lee por rangos de bytes, cada rango se cachea en el edge y la URL incluye la versión del fichero.</p>
           </article>
         </div>
-      </div>
-    </section>
-
-    <section class="arq-section">
-      <div class="container wide">
-        <h2 class="reveal">Lo que salió mal</h2>
-        <div class="arq-wrong">
-          <article class="reveal">
-            <h3>80.000 licitaciones perdidas y un «OK»</h3>
-            <p>La primera carga del histórico perdió 80.000 licitaciones de 2020 y el script dijo que todo había ido bien. Cargaba varios años a la vez en D1, que solo admite una importación por base. Un fichero agotó los reintentos y falló, pero bash ignora <code>set -e</code> dentro de una función llamada con <code>&amp;&amp;</code>, así que el error no llegó a ningún sitio. Lo encontré al comparar los recuentos de cada año con el Parquet. Ahora las cargas van en serie y cada reconstrucción termina comprobando que los recuentos cuadran.</p>
-          </article>
-          <article class="reveal">
-            <h3>Datos corruptos que no lo eran</h3>
-            <p>El explorador empezó a devolver errores de lectura después de sustituir un Parquet. DuckDB nativo leía el mismo fichero sin problemas, así que los datos estaban bien. Era el navegador: había cacheado trozos de la versión anterior bajo la misma URL y los mezclaba con los de la nueva. Desde entonces cada fichero se pide con su versión en la URL.</p>
-          </article>
-          <article class="reveal">
-            <h3>Doce reinicios de D1</h3>
-            <p>Calcular las tablas de empresas y órganos dentro de D1 superaba su límite de 30 s por consulta, y la base se reinició doce veces seguidas. El cálculo se movió a DuckDB, sobre el Parquet, y tarda menos de un segundo.</p>
-          </article>
-        </div>
-        <p class="arq-closer reveal">La lección del primero: un «OK» no vale nada si nadie cuenta las filas.</p>
       </div>
     </section>
 
@@ -295,7 +274,7 @@
 
     <section class="arq-section arq-cta">
       <div class="container wide">
-        <p class="reveal">Licit empezó en 2026, con Guillermo Burges, como una herramienta para redactar ofertas a licitaciones. Esta API de datos era la base. El código, el ETL y los workflows son públicos.</p>
+        <p class="reveal">El código, el ETL y los workflows son públicos.</p>
         <div class="hero-actions reveal">
           <a href="/explorar" class="btn btn-solid">Probar el explorador</a>
           <a href="https://api.licit.es/docs" class="btn">Ver la API</a>
