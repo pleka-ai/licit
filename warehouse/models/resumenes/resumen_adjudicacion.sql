@@ -2,7 +2,7 @@ MODEL (
   name resumen.resumen_adjudicacion,
   kind FULL,
   grain (anio, comunidad, cpv_division_codigo, procedimiento, tipo_contrato),
-  description 'Resumen: resultados de adjudicación por año de publicación, comunidad autónoma, división CPV, procedimiento y tipo de contrato. Guarda sumas y recuentos, no medias, para que cualquier agrupación dé medias exactas: baja media = suma_baja_pct / con_baja; ofertas medias = ofertas / con_ofertas. La baja solo cuenta adjudicaciones con importe entre 0 y el presupuesto (por encima suele ser un error de carga).',
+  description 'Resumen: resultados de adjudicación por año de publicación, comunidad autónoma, división CPV, procedimiento y tipo de contrato. Guarda sumas y recuentos, no medias, para que cualquier agrupación dé medias exactas: baja media = suma_baja_pct / con_baja; ofertas medias = ofertas / con_ofertas, contadas una vez por resultado aunque tenga varios adjudicatarios. La baja solo cuenta adjudicaciones con importe entre 0 y el presupuesto (por encima suele ser un error de carga).',
   audits (
     not_null(columns := (adjudicaciones, con_baja, con_ofertas, ofertas, una_oferta))
   )
@@ -18,7 +18,8 @@ WITH filas AS (
     l.tipo_contrato,
     r.es_adjudicacion,
     a.importe_sin_iva,
-    a.num_ofertas,
+    -- Offers belong to the result, repeated on each of its winners' rows.
+    CASE WHEN a.adjudicatario_n = 1 THEN a.num_ofertas END AS num_ofertas,
     r.es_adjudicacion
       AND a.importe_sin_iva > 0
       AND a.importe_sin_iva <= a.presupuesto_sin_iva AS con_baja,

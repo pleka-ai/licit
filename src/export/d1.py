@@ -248,7 +248,9 @@ def _previous(con: duckdb.DuckDBPyConnection, prev_dir: Path) -> None:
     """``previo_<table>``: what D1 holds, from a baseline or a whole model.
 
     A table the previous run did not have (a new D1 table, or a model that
-    predates a column) is empty, so all its rows are written.
+    predates a column) is empty, so all its rows are written. A baseline
+    table is read with today's columns: one it lacks comes back NULL (so its
+    rows differ and are rewritten) and one it no longer needs is dropped.
     """
     baseline = (prev_dir / BASELINE_MARKER).exists()
     if not baseline:
@@ -257,8 +259,7 @@ def _previous(con: duckdb.DuckDBPyConnection, prev_dir: Path) -> None:
         path = prev_dir / f"{table}.parquet"
         try:
             if baseline:
-                quoted = str(path).replace("'", "''")
-                source = f"SELECT * FROM read_parquet('{quoted}')"
+                source = _aligned(con, table, path)
             else:
                 con.execute("SET schema = 'previo'")
                 source = spec.query
@@ -269,6 +270,21 @@ def _previous(con: duckdb.DuckDBPyConnection, prev_dir: Path) -> None:
             )
         finally:
             con.execute("SET schema = 'main'")
+
+
+def _aligned(con: duckdb.DuckDBPyConnection, table: str, path: Path) -> str:
+    """SELECT over a baseline Parquet with the columns of ``nuevo_<table>``."""
+    quoted = str(path).replace("'", "''")
+    source = f"read_parquet('{quoted}')"
+    have = {
+        row[0] for row in con.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()
+    }
+    wanted = con.execute(f"DESCRIBE main.nuevo_{table}").fetchall()
+    select = ", ".join(
+        f'"{name}"' if name in have else f'CAST(NULL AS {kind}) AS "{name}"'
+        for name, kind, *_ in wanted
+    )
+    return f"SELECT {select} FROM {source}"
 
 
 def _write_baseline(con: duckdb.DuckDBPyConnection, path: Path) -> None:

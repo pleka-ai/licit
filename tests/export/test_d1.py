@@ -405,3 +405,23 @@ def test_previous_model_without_new_tables(tmp_path: Path, settings: Settings) -
     assert summary["empresa_registro"]["escritas"] == 1
     assert summary["cargo_vigente"]["escritas"] == 1
     assert summary["licitacion"]["escritas"] == 0
+
+
+def test_baseline_with_other_columns(tmp_path: Path, settings: Settings) -> None:
+    # A D1 table gains a column and drops another after the baseline was
+    # written: the diff still runs, and the table is rewritten in full.
+    build(tmp_path / "ayer", _model(tmp_path / "m1", _BASE), None, settings)
+    baseline = tmp_path / "ayer" / BASELINE
+    sociedad = baseline / "sociedad.parquet"
+    duckdb.execute(
+        f"COPY (SELECT * EXCLUDE (nombre), 1 AS sobrante FROM '{sociedad}')"
+        f" TO '{sociedad}.tmp' (FORMAT parquet)"
+    )
+    Path(f"{sociedad}.tmp").rename(sociedad)
+
+    summary = build(
+        tmp_path / "hoy", _model(tmp_path / "m2", _BASE), baseline, settings
+    )
+
+    assert summary["sociedad"]["escritas"] == 1
+    assert summary["licitacion"]["escritas"] == 0

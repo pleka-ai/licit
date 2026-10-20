@@ -97,6 +97,9 @@ jobs:
           scripts/reintentar.sh aws s3 cp cache.tar.zst "$BUCKET/cache/borme/$YEAR.tar.zst" --only-show-errors
 
       - name: Export raw
+        # Also after a partial download: a document the BOE keeps refusing
+        # must not freeze the year. The job still fails on the download step.
+        if: ${{ !cancelled() }}
         run: |
           uv run python -m borme.raw cache out "$YEAR"
           scripts/reintentar.sh aws s3 sync "out/$YEAR" "$BUCKET/parquet/raw/borme/$YEAR/" --delete --only-show-errors

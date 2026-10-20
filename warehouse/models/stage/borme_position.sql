@@ -46,10 +46,11 @@ SELECT
     WHEN role_key LIKE 'adm%solid%' OR role_key LIKE 'admin%sol%' THEN 'Administrador solidario'
     WHEN role_key LIKE 'adm%manc%' OR role_key LIKE 'adm%conj%' THEN 'Administrador mancomunado'
     WHEN role_key LIKE 'adm%' THEN 'Administrador'
-    WHEN role_key LIKE 'con%del%' OR role_key LIKE 'co%de%' THEN 'Consejero delegado'
+    -- 'Co.De.Ma.So' (mancomunado/solidario); not 'Cons.Indep.' nor 'Coms.Del.'.
+    WHEN role_key LIKE 'con%del%' OR role_key LIKE 'code%' THEN 'Consejero delegado'
     WHEN role_key LIKE 'cons%' THEN 'Consejero'
     WHEN role_key LIKE 'vicepres%' THEN 'Vicepresidente'
-    WHEN role_key LIKE 'pres%' THEN 'Presidente'
+    WHEN role_key LIKE 'pres%' OR role_key LIKE 'copres%' THEN 'Presidente'
     WHEN role_key LIKE 'v%sec%' OR role_key LIKE 'vicesec%' THEN 'Vicesecretario'
     WHEN role_key LIKE 'sec%' THEN 'Secretario'
     WHEN role_key LIKE 'apo%' THEN 'Apoderado'
