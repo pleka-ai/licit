@@ -12,6 +12,21 @@ const RESUMEN_COLS = `id, expediente, titulo, organo, organo_id, tipo_contrato, 
   num_licitadores, adjudicatario, adjudicatario_nif,
   lugar_subentidad AS lugar, tiene_documentos, num_lotes, url_place`;
 
+const RESUMEN_SELECT = RESUMEN_COLS.split(",").map((c) => `l.${c.trim()}`).join(", ");
+
+// Two phases: pick one page of rids on the licitacion table alone (filters and
+// sort never touch the other tables), then resolve only those rows through
+// licitacion_api.
+// `sortKey` is an expression of the inner FROM; ties go newest first.
+function pageSql(from, whereSql, sortKey, desc) {
+  const dir = desc ? "DESC" : "ASC";
+  return `SELECT ${RESUMEN_SELECT} FROM (
+      SELECT l.rid AS rid, ${sortKey} AS k FROM ${from} ${whereSql}
+      ORDER BY k ${dir}, l.rid DESC LIMIT ? OFFSET ?) p
+    JOIN licitacion_api l ON l.rid = p.rid
+    ORDER BY p.k ${dir}, p.rid DESC`;
+}
+
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
 
@@ -21,10 +36,19 @@ const CATALOGOS = ["cpv", "estado", "organo_tipo", "procedimiento", "tipo_contra
 // indexed column of licitacion (type and procedure codes are copied there) or
 // to the keys of the estado table.
 const CODE_FILTERS = {
-  tipo_contrato: (marks) => `l.type_code IN (${marks})`,
-  procedimiento: (marks) => `l.procedure_code IN (${marks})`,
-  estado: (marks) => `l.estado_key IN (SELECT estado_key FROM estado WHERE codigo IN (${marks}))`,
+  tipo_contrato: (marks) => `l.tipo_contrato_codigo IN (${marks})`,
+  procedimiento: (marks) => `l.procedimiento_codigo IN (${marks})`,
+  // A single state stays an equality, so its index comes out in rowid order.
+  estado: (marks, n) =>
+    n === 1
+      ? `l.estado_key = (SELECT estado_key FROM estado WHERE codigo = ${marks})`
+      : `l.estado_key IN (SELECT estado_key FROM estado WHERE codigo IN (${marks}))`,
 };
+
+// Past this many matches, "most expensive first" walks idx_lic_importe from
+// the top and stops at the page; below it, the filters' indexes and a sort of
+// the few matches are cheaper.
+const IMPORTE_SCAN_MIN = 2000;
 
 // Internal columns of licitacion_api the API never returns.
 const KEY_COLS = [
@@ -346,17 +370,18 @@ async function buscar(env, body) {
     params.push(...vals);
   };
 
-  let from = "licitacion_api l";
+  // Filters use licitacion's own columns (see pageSql).
+  let from = "licitacion l";
   const q = typeof body.q === "string" ? body.q.trim() : "";
   if (q) {
-    from = "licitacion_fts JOIN licitacion_api l ON l.rid = licitacion_fts.rowid";
+    from = "licitacion_fts JOIN licitacion l ON l.rid = licitacion_fts.rowid";
     add("licitacion_fts MATCH ?", ftsQuery(q));
   }
   for (const [name, condition] of Object.entries(CODE_FILTERS)) {
     if (!Array.isArray(f[name]) || !f[name].length) continue;
     const codes = await codesFor(env, name, f[name]);
     if (codes.length === 0) add("0");
-    else add(condition(codes.map(() => "?").join(", ")), ...codes);
+    else add(condition(codes.map(() => "?").join(", "), codes.length), ...codes);
   }
   if (f.cpv_prefijo) {
     const p = String(f.cpv_prefijo).replace(/[^0-9]/g, "");
@@ -380,44 +405,47 @@ async function buscar(env, body) {
   if (f.adjudicatario) add(...entityFilter("empresa", f.adjudicatario));
   if (f.organo_id) add(...entityFilter("organo", String(f.organo_id)));
   else if (f.organo) add(...entityFilter("organo", f.organo));
-  if (f.financiacion_ue === true) add("l.funding_program_code = 'EU'");
-  if (f.financiacion_ue === false) add("coalesce(l.funding_program_code, '') <> 'EU'");
+  if (f.financiacion_ue === true) add("l.financiacion_codigo = 'EU'");
+  if (f.financiacion_ue === false) add("coalesce(l.financiacion_codigo, '') <> 'EU'");
 
-  // rid is chronological, so "newest first" is a reverse rowid scan (no sort).
-  const order =
-    body.ordenar === "importe"
-      ? "l.presupuesto_sin_iva DESC"
-      : body.ordenar === "relevancia" && q
-        ? "licitacion_fts.rank"
-        : q
-          ? "licitacion_fts.rowid DESC"
-          : "l.rid DESC";
+  // rid is chronological, so "newest first" is a reverse rowid scan (no sort);
+  // with text, the FTS index yields its rowids (= rid) in order.
+  const porImporte = body.ordenar === "importe";
+  const [sortKey, desc] = porImporte
+    ? ["l.presupuesto_sin_iva", true]
+    : body.ordenar === "relevancia" && q
+      ? ["licitacion_fts.rank", false]
+      : [q ? "licitacion_fts.rowid" : "l.rid", true];
   const limit = clampLimit(body.limit ?? body.limite);
   const offset = decodeCursor(body.cursor);
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const cols = RESUMEN_COLS.split(",").map((c) => `l.${c.trim()}`).join(", ");
+  const page = (fromSql) =>
+    env.DB.prepare(pageSql(fromSql, whereSql, sortKey, desc)).bind(...params, limit + 1, offset);
 
-  const rowsStmt = env.DB.prepare(
-    `SELECT ${cols} FROM ${from} ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`,
-  ).bind(...params, limit + 1, offset);
   let total;
   let exact = true;
   let rows;
   if (!where.length) {
-    const [r, m] = await Promise.all([rowsStmt.all(), meta(env)]);
+    const [r, m] = await Promise.all([page(from).all(), meta(env)]);
     rows = r;
     total = parseJson(m.stats ?? "{}")?.total_licitaciones ?? 0;
   } else {
-    const [r, c] = await env.DB.batch([
-      rowsStmt,
-      env.DB.prepare(`SELECT count(*) AS n FROM (SELECT 1 FROM ${from} ${whereSql} LIMIT ?)`).bind(
-        ...params,
-        COUNT_CAP + 1,
-      ),
-    ]);
-    rows = r;
-    total = Math.min(c.results[0].n, COUNT_CAP);
-    exact = c.results[0].n <= COUNT_CAP;
+    const count = env.DB.prepare(`SELECT count(*) AS n FROM (SELECT 1 FROM ${from} ${whereSql} LIMIT ?)`).bind(
+      ...params,
+      COUNT_CAP + 1,
+    );
+    let n;
+    if (porImporte && !q) {
+      // The count decides how to sort (IMPORTE_SCAN_MIN).
+      n = (await count.first()).n;
+      rows = await page(n > IMPORTE_SCAN_MIN ? "licitacion l INDEXED BY idx_lic_importe" : from).all();
+    } else {
+      const [r, c] = await env.DB.batch([page(from), count]);
+      rows = r;
+      n = c.results[0].n;
+    }
+    total = Math.min(n, COUNT_CAP);
+    exact = n <= COUNT_CAP;
   }
   return {
     total,
@@ -455,10 +483,11 @@ async function perfil(env, col, value, url) {
   const offset = decodeCursor(url.searchParams.get("cursor"));
   const empresa = col === "adjudicatario_nif";
   const key = empresa ? value.toUpperCase() : value.toLowerCase();
+  // Every query below reads licitacion's own columns and keys; names come
+  // from the small tables only for the top rows.
   const scope = empresa
     ? ADJUDICADAS("SELECT empresa_key FROM empresa WHERE nif = ?")
     : "l.organo_key IN (SELECT organo_key FROM organo WHERE id = ?)";
-  const otherCol = empresa ? "organo" : "adjudicatario";
   const stats = empresa
     ? env.DB.prepare(
         `SELECT e.nombre, count(*) AS contratos,
@@ -470,29 +499,37 @@ async function perfil(env, col, value, url) {
          WHERE e.nif = ? GROUP BY e.empresa_key ORDER BY contratos DESC LIMIT 1`,
       )
     : env.DB.prepare(
-        `SELECT max(l.organo) AS nombre, count(*) AS contratos,
-                sum(coalesce(l.importe_adjudicacion, l.presupuesto_sin_iva)) AS importe_total,
-                avg(coalesce(l.importe_adjudicacion, l.presupuesto_sin_iva)) AS importe_medio,
-                avg(CASE WHEN l.presupuesto_sin_iva > 0 AND l.importe_adjudicacion IS NOT NULL
-                    THEN 100.0 * (l.presupuesto_sin_iva - l.importe_adjudicacion) / l.presupuesto_sin_iva END) AS baja_media_pct
-         FROM licitacion_api l WHERE ${scope}`,
+        `SELECT (SELECT nombre FROM organo WHERE id = ?1) AS nombre, count(*) AS contratos,
+                sum(coalesce(l.importe_adjudicado_sin_iva, l.presupuesto_sin_iva)) AS importe_total,
+                avg(coalesce(l.importe_adjudicado_sin_iva, l.presupuesto_sin_iva)) AS importe_medio,
+                avg(CASE WHEN l.presupuesto_sin_iva > 0 AND l.importe_adjudicado_sin_iva IS NOT NULL
+                    THEN 100.0 * (l.presupuesto_sin_iva - l.importe_adjudicado_sin_iva) / l.presupuesto_sin_iva END) AS baja_media_pct
+         FROM licitacion l WHERE l.organo_key IN (SELECT organo_key FROM organo WHERE id = ?1)`,
       );
-  const [statsRes, cpvs, otros, rows] = await env.DB.batch([
+  // Most frequent CPVs and counterparts: group by key, then name the top 5.
+  const otros = empresa
+    ? `SELECT o.nombre, x.n FROM (
+         SELECT l.organo_key AS k, count(*) AS n FROM licitacion l WHERE ${scope}
+         GROUP BY l.organo_key ORDER BY n DESC LIMIT 6) x
+       JOIN organo o ON o.organo_key = x.k ORDER BY x.n DESC LIMIT 5`
+    : `SELECT e.nombre, x.n FROM (
+         SELECT l.adjudicatario_key AS k, count(*) AS n FROM licitacion l WHERE ${scope}
+         GROUP BY l.adjudicatario_key ORDER BY n DESC LIMIT 7) x
+       JOIN empresa e ON e.empresa_key = x.k ORDER BY x.n DESC LIMIT 5`;
+  const [statsRes, cpvs, otrosRes, rows] = await env.DB.batch([
     stats.bind(key),
     env.DB.prepare(
-      `SELECT l.cpv_principal AS cpv, max(l.cpv_principal_desc) AS descripcion, count(*) AS n
-       FROM licitacion_api l WHERE ${scope} AND l.cpv_principal IS NOT NULL
-       GROUP BY l.cpv_principal ORDER BY n DESC LIMIT 5`,
+      `SELECT c.codigo AS cpv, c.descripcion, x.n FROM (
+         SELECT l.cpv_key AS k, count(*) AS n FROM licitacion l WHERE ${scope}
+         GROUP BY l.cpv_key ORDER BY n DESC LIMIT 6) x
+       JOIN cpv c ON c.cpv_key = x.k ORDER BY x.n DESC LIMIT 5`,
     ).bind(key),
-    env.DB.prepare(
-      `SELECT l.${otherCol} AS nombre, count(*) AS n FROM licitacion_api l
-       WHERE ${scope} AND l.${otherCol} IS NOT NULL
-       GROUP BY l.${otherCol} ORDER BY n DESC LIMIT 5`,
-    ).bind(key),
-    env.DB.prepare(
-      `SELECT ${RESUMEN_COLS} FROM licitacion_api l WHERE ${scope}
-       ORDER BY l.rid DESC LIMIT ? OFFSET ?`,
-    ).bind(key, limit + 1, offset),
+    env.DB.prepare(otros).bind(key),
+    env.DB.prepare(pageSql("licitacion l", `WHERE ${scope}`, "l.rid", true)).bind(
+      key,
+      limit + 1,
+      offset,
+    ),
   ]);
   const s = statsRes.results[0];
   if (!s || !s.contratos) throw new HttpError(404, "Sin licitaciones");
@@ -505,7 +542,7 @@ async function perfil(env, col, value, url) {
       importe_medio: round2(s.importe_medio),
       baja_media_pct: round2(s.baja_media_pct),
       cpv_frecuentes: cpvs.results,
-      [empresa ? "organos_frecuentes" : "adjudicatarios_frecuentes"]: otros.results,
+      [empresa ? "organos_frecuentes" : "adjudicatarios_frecuentes"]: otrosRes.results,
     },
     licitaciones: rows.results.slice(0, limit).map(resumen),
     cursor_siguiente: rows.results.length > limit ? encodeCursor(offset + limit) : null,
@@ -547,14 +584,19 @@ async function similares(env, id) {
   if (!base.cpv_principal) return { total: 0, total_exacto: true, resultados: [], cursor_siguiente: null };
   const amount = base.presupuesto_sin_iva || 0;
   const prefix = base.cpv_principal.slice(0, 5);
-  // Newest 200 candidates of the same CPV class (index range), ranked by price in JS.
+  // The newest 200 candidates of the same CPV class, the 10 closest in price,
+  // and only those 10 resolved through licitacion_api.
   const { results } = await env.DB.prepare(
-    `SELECT ${RESUMEN_COLS} FROM licitacion_api l
-     WHERE l.cpv_key IN (SELECT cpv_key FROM cpv WHERE codigo >= ? AND codigo < ?) AND l.id <> ?
-       AND (? = 0 OR l.presupuesto_sin_iva BETWEEN ? AND ?)
-     ORDER BY l.rid DESC LIMIT 200`,
+    `SELECT ${RESUMEN_SELECT} FROM (
+       SELECT rid FROM (
+         SELECT l.rid, l.presupuesto_sin_iva AS p FROM licitacion l
+         WHERE l.cpv_key IN (SELECT cpv_key FROM cpv WHERE codigo >= ?1 AND codigo < ?2)
+           AND l.id <> ?3 AND (?4 = 0 OR l.presupuesto_sin_iva BETWEEN ?4 * 0.5 AND ?4 * 2)
+         ORDER BY l.rid DESC LIMIT 200)
+       ORDER BY abs(coalesce(p, 0) - ?4) LIMIT 10) x
+     JOIN licitacion_api l ON l.rid = x.rid`,
   )
-    .bind(prefix, `${prefix}~`, id.toLowerCase(), amount, amount * 0.5, amount * 2)
+    .bind(prefix, `${prefix}~`, id.toLowerCase(), amount)
     .all();
   const top = results
     .sort((a, b) => Math.abs((a.presupuesto_sin_iva || 0) - amount) - Math.abs((b.presupuesto_sin_iva || 0) - amount))

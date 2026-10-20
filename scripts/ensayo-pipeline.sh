@@ -74,10 +74,23 @@ expect "historial de estados" "$(d1_count 'SELECT count(*) n FROM cambio_estado'
 
 echo "== API sobre el D1 local"
 PORT="${ENSAYO_PORT:-8799}"
-(cd "$ROOT" && $WRANGLER dev --local --port "$PORT" --persist-to "$D1_PERSIST_TO" \
+if curl -s -o /dev/null "http://localhost:$PORT"; then
+  echo "FALLO: el puerto $PORT ya está en uso (ENSAYO_PORT para usar otro)"; exit 1
+fi
+(cd "$ROOT" && exec $WRANGLER dev --local --port "$PORT" --persist-to "$D1_PERSIST_TO" \
   > "$WORK/wrangler-dev.log" 2>&1) &
 DEV=$!
-trap 'kill $DEV 2> /dev/null || true' EXIT
+# npx starts wrangler, which starts workerd: stop the whole tree.
+descendants() {
+  local child
+  for child in $(pgrep -P "$1" 2> /dev/null); do
+    descendants "$child"
+    echo "$child"
+  done
+}
+# shellcheck disable=SC2046
+stop_dev() { kill $(descendants "$DEV") "$DEV" 2> /dev/null || true; }
+trap stop_dev EXIT
 for _ in $(seq 1 60); do
   curl -sf "http://localhost:$PORT/api/salud" > /dev/null && break
   sleep 2
@@ -89,4 +102,12 @@ id=$(curl -sf -X POST "http://localhost:$PORT/api/v1/buscar" \
   -H 'content-type: application/json' -d '{"limit": 1}' | jq -r '.resultados[0].id')
 campos=$(curl -sf "http://localhost:$PORT/api/v1/licitacion/$id" | jq 'keys | length')
 expect "campos de la ficha" "$campos" 42
+api() { curl -sf "http://localhost:$PORT/api/$1"; }
+buscar() { curl -sf -X POST "http://localhost:$PORT/api/v1/buscar" -H 'content-type: application/json' -d "$1"; }
+expect "orden por importe" "$(buscar '{"ordenar": "importe", "limit": 5}' | jq '.resultados | length')" 3
+organo=$(buscar '{"limit": 5}' | jq -r '[.resultados[] | select(.organo_id)][0].organo_id')
+expect "licitaciones del órgano" "$(api "v1/organo/$organo" | jq '.stats.contratos > 0')" true
+nif=$(buscar '{"limit": 5}' | jq -r '[.resultados[] | select(.adjudicatario_nif)][0].adjudicatario_nif')
+expect "contratos de la empresa" "$(api "v1/empresa/$nif" | jq '.stats.contratos > 0')" true
+expect "similares responde" "$(api "v1/similares/$id" | jq 'has("resultados")')" true
 echo "Ensayo completo"
