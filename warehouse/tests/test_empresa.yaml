@@ -21,5 +21,5 @@ test_empresa_nombre_vigente_y_miembros_reservados:
       rows:
         - {empresa_key: -1, referencia: __no_aplica__, nombre: Sin adjudicatario, es_ute: null}
         - {empresa_key: 0, referencia: __desconocida__, nombre: Empresa desconocida, es_ute: null}
-        - {empresa_key: 2225605594610499024, referencia: U1, nombre: UTE Obras, es_ute: true}
-        - {empresa_key: 6901645180340097599, referencia: B1, nombre: Nuevo SL, es_ute: false}
+        - {empresa_key: 1086721481743407, referencia: U1, nombre: UTE Obras, es_ute: true}
+        - {empresa_key: 3369943935712938, referencia: B1, nombre: Nuevo SL, es_ute: false}
