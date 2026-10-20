@@ -76,37 +76,54 @@ class LocalFeedTransport(httpx.AsyncBaseTransport):
 # ----------------------------------------------------------- Seed download
 
 
+def archive_name(feed_type: str, year: int) -> str:
+    """File name of a yearly archive in the zip cache."""
+    return f"{feed_type}_{year}.zip"
+
+
 async def _download_and_extract(
     feed_type: str,
     year: int,
     year_dir: Path,
+    zip_dir: Path | None = None,
 ) -> None:
-    """Download a yearly zip archive and extract it into *year_dir*."""
+    """Extract a yearly zip archive into *year_dir*, downloading it if needed.
+
+    With *zip_dir*, an archive already there is reused and a downloaded one is
+    kept, so archived years are fetched from PLACSP only once.
+    """
     base_name = _SEED_FEED_PATHS[feed_type]
     url = f"{_SEED_BASE_URL}/{base_name}_{year}.zip"
-    zip_path = year_dir.parent / f"{feed_type}_{year}.zip"
+    zip_path = (zip_dir or year_dir.parent) / archive_name(feed_type, year)
 
     year_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Downloading feed_type=%s year=%d url=%s", feed_type, year, url)
-    timeout = httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=30.0)
-    async with (
-        httpx.AsyncClient(follow_redirects=True, timeout=timeout) as http,
-        http.stream("GET", url) as resp,
-    ):
-        resp.raise_for_status()
-        with open(zip_path, "wb") as f:
-            async for chunk in resp.aiter_bytes():
-                f.write(chunk)
+    if zip_dir is not None and zip_path.exists():
+        logger.info("Cached archive feed_type=%s year=%d", feed_type, year)
+    else:
+        zip_path.parent.mkdir(parents=True, exist_ok=True)
+        logger.info("Downloading feed_type=%s year=%d url=%s", feed_type, year, url)
+        timeout = httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=30.0)
+        partial = zip_path.with_suffix(".part")
+        async with (
+            httpx.AsyncClient(follow_redirects=True, timeout=timeout) as http,
+            http.stream("GET", url) as resp,
+        ):
+            resp.raise_for_status()
+            with open(partial, "wb") as f:
+                async for chunk in resp.aiter_bytes():
+                    f.write(chunk)
+        partial.rename(zip_path)
 
     logger.info("Extracting feed_type=%s year=%d", feed_type, year)
-    await asyncio.to_thread(_extract_zip, zip_path, year_dir)
+    await asyncio.to_thread(_extract_zip, zip_path, year_dir, keep=zip_dir is not None)
 
 
-def _extract_zip(zip_path: Path, dest: Path) -> None:
+def _extract_zip(zip_path: Path, dest: Path, *, keep: bool = False) -> None:
     with zipfile.ZipFile(zip_path) as zf:
         zf.extractall(dest)
-    zip_path.unlink()
+    if not keep:
+        zip_path.unlink()
 
 
 # ---------------------------------------------------------- Pair resolution
@@ -259,7 +276,9 @@ async def _sync_one_pair(
     if event.get("seed") and tmp_base is not None:
         seed_dir = tmp_base / feed_type / str(year)
         try:
-            await _download_and_extract(feed_type, year, seed_dir)
+            await _download_and_extract(
+                feed_type, year, seed_dir, zip_dir=event.get("zip_dir")
+            )
         except (httpx.HTTPStatusError, httpx.TransportError):
             logger.exception(
                 "Seed download FAILED feed_type=%s year=%d",
@@ -391,6 +410,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Process a single feed type (e.g. insiders). Optional.",
     )
     parser.add_argument(
+        "--zip-dir",
+        type=Path,
+        default=None,
+        help="With --seed: reuse yearly archives found here and keep downloads.",
+    )
+    parser.add_argument(
         "--end-date",
         type=str,
         default=None,
@@ -409,6 +434,8 @@ def _build_event(args: argparse.Namespace) -> dict[str, Any]:
         event["years"] = args.years
     if args.feed_type:
         event["feed_type"] = args.feed_type
+    if args.zip_dir:
+        event["zip_dir"] = args.zip_dir
     if args.end_date:
         dt = datetime.fromisoformat(args.end_date)
         if dt.tzinfo is None:
