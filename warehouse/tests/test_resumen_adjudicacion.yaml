@@ -1,0 +1,31 @@
+test_resumen_adjudicacion_sumas:
+  model: resumen.resumen_adjudicacion
+  description: Sums and counts per group; the discount only counts awards with an amount between 0 and the budget; non-awarded results count offers but not awards; places outside Spain have no region.
+  inputs:
+    modelo.adjudicacion:
+      rows:
+        - {licitacion_key: 1, lugar_key: 1, cpv_key: 1, resultado_key: 1, fecha_publicacion: '2024-03-01', importe_sin_iva: 80.0, presupuesto_sin_iva: 100.0, num_ofertas: 3}
+        - {licitacion_key: 1, lugar_key: 1, cpv_key: 1, resultado_key: 1, fecha_publicacion: '2024-03-01', importe_sin_iva: 90.0, presupuesto_sin_iva: 100.0, num_ofertas: 1}
+        - {licitacion_key: 1, lugar_key: 1, cpv_key: 1, resultado_key: 1, fecha_publicacion: '2024-03-01', importe_sin_iva: 5000.0, presupuesto_sin_iva: 100.0, num_ofertas: 0}
+        - {licitacion_key: 1, lugar_key: 1, cpv_key: 1, resultado_key: 2, fecha_publicacion: '2024-03-01', importe_sin_iva: null, presupuesto_sin_iva: 100.0, num_ofertas: 2}
+        - {licitacion_key: 2, lugar_key: 2, cpv_key: 1, resultado_key: 1, fecha_publicacion: '2025-01-10', importe_sin_iva: 50.0, presupuesto_sin_iva: 100.0, num_ofertas: null}
+    modelo.licitacion:
+      rows:
+        - {licitacion_key: 1, procedimiento: Abierto, tipo_contrato: Suministros}
+        - {licitacion_key: 2, procedimiento: Abierto, tipo_contrato: Suministros}
+    modelo.lugar:
+      rows:
+        - {lugar_key: 1, pais_codigo: ES, nuts2: Galicia}
+        - {lugar_key: 2, pais_codigo: PT, nuts2: Norte}
+    modelo.cpv:
+      rows:
+        - {cpv_key: 1, division_codigo: '33000000', division: Equipamiento médico}
+    modelo.resultado:
+      rows:
+        - {resultado_key: 1, es_adjudicacion: true}
+        - {resultado_key: 2, es_adjudicacion: false}
+  outputs:
+    query:
+      rows:
+        - {anio: 2024, comunidad: Galicia, cpv_division_codigo: '33000000', cpv_division: Equipamiento médico, procedimiento: Abierto, tipo_contrato: Suministros, adjudicaciones: 3, importe_adjudicado: 5170.0, con_baja: 2, suma_baja_pct: 30.0, con_ofertas: 3, ofertas: 6, una_oferta: 1}
+        - {anio: 2025, comunidad: null, cpv_division_codigo: '33000000', cpv_division: Equipamiento médico, procedimiento: Abierto, tipo_contrato: Suministros, adjudicaciones: 1, importe_adjudicado: 50.0, con_baja: 1, suma_baja_pct: 50.0, con_ofertas: 0, ofertas: 0, una_oferta: 0}
