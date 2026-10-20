@@ -12,18 +12,23 @@
 ## Imports
 - `from shared.{models,enums,config,db,codice,logger} import ...`
 - `from etl.{parsers,repositories,services,handlers} import ...`
-- `from api.{routes,deps,schemas} import ...`
+- `from export import {raw,compact,modelo,d1,derived}`
 
-## API naming
-- Routes, OpenAPI tags, response fields: **Spanish** (PLACSP terminology).
+## Naming
+- API routes and response fields (worker/), warehouse tables and columns: **Spanish** (PLACSP terminology).
 - Python internals (vars, functions, docstrings): **English**.
+
+## Data model
+- `schema/` is the parser's staging (CODICE). The public model is `warehouse/` (SQLMesh, Kimball): see `warehouse/README.md`.
+- No `dim_`/`fact_` prefixes: the role is a model tag and its description.
+- `uv run sqlmesh -p warehouse test` for model unit tests.
 
 ## Testing
 - `uv run pytest tests/` before committing.
 - ETL smoke test: `PYTHONPATH=src uv run python -m etl.handlers.feed_reader --help`
 
 ## Deploy
-- Single Hetzner machine, Docker Compose: `cd deploy && docker compose up -d`
+- GitHub Actions (etl.yml, historico.yml) + Cloudflare (Worker, D1, R2). See README.
 - This repository is public on GitHub, take that into consideration
 - Make sure the actions pass. All tests must pass before pushing to remote.
 - Fix everything, even if you dont made the errors. 

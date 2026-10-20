@@ -138,9 +138,6 @@ jobs:
 
       - name: Save state to R2
         run: |
-          pg_dump -Fc -Z 9 --no-owner \
-            --exclude-table-data=api_user --exclude-table-data=api_key \
-            --exclude-table-data=audit_log \
-            -d "$DATABASE_URL" -f state.dump
+          pg_dump -Fc -Z 9 --no-owner -d "$DATABASE_URL" -f state.dump
           ls -lh state.dump
           aws s3 cp state.dump "$BUCKET/state/licit.dump" --only-show-errors

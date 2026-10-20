@@ -333,11 +333,6 @@ async def _handle(event: dict[str, Any]) -> dict[str, Any]:
             max_concurrent=config.feed_reader_max_concurrent_feeds,
         )
 
-        if agg["processed"] > 0:
-            logger.info("Refreshing mv_licitacion (%d new entries)", agg["processed"])
-            await pool.execute("SELECT refresh_mv_licitacion()")
-            logger.info("mv_licitacion refreshed")
-
     finally:
         await pool.close()
         tmp_base = event.get("_tmp_base")

@@ -1,6 +1,6 @@
 """Drop tenders older than the ETL window so the nightly dump stays small.
 
-Older years live on as frozen Parquet under ``parquet/historico/``.
+Older folders live on in the raw history (``parquet/raw/todo/``).
 
 Usage::
 
@@ -28,8 +28,6 @@ async def prune(settings: Settings) -> int:
         status = await conn.execute(
             "DELETE FROM contract_folder_status WHERE updated < $1", cutoff
         )
-        await conn.execute("SELECT refresh_mv_licitacion()")
-        await conn.execute("SELECT refresh_mv_landing_stats()")
     finally:
         await conn.close()
     deleted = int(status.split()[-1])

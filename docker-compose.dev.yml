@@ -1,3 +1,5 @@
+# Local Postgres for the ETL, with the schema and catalogs applied.
+#   docker compose -f docker-compose.dev.yml up -d
 services:
   postgres:
     image: postgres:16-alpine
@@ -16,36 +18,17 @@ services:
       retries: 5
 
   schema-init:
-    build:
-      context: .
-      dockerfile: deploy/Dockerfile
-    command: ./schema/apply.sh
+    # Debian image: apply.sh needs bash and psql.
+    image: postgres:16
+    command: /schema/apply.sh
     environment:
       DATABASE_URL: postgresql://licit:licit@postgres:5432/licit
-      API_PASSWORD: licit_readonly
+    volumes:
+      - ./schema:/schema:ro
     depends_on:
       postgres:
         condition: service_healthy
     restart: "no"
-
-  api:
-    build:
-      context: .
-      dockerfile: deploy/Dockerfile
-    command: uv run uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
-    ports:
-      - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql://licit_api:licit_readonly@postgres:5432/licit
-      ENVIRONMENT: development
-      LOG_LEVEL: DEBUG
-    depends_on:
-      postgres:
-        condition: service_healthy
-      schema-init:
-        condition: service_completed_successfully
-    volumes:
-      - ./src:/app/src
 
 volumes:
   pgdata_dev:
