@@ -108,3 +108,46 @@ class TestMinimalEntry:
         folder = _folder_elem("minimal_entry.xml")
         bundle = parser.parse(folder)
         assert bundle.notices == []
+
+
+class TestPublicationDates:
+    """Live feeds date each publication, not the notice itself."""
+
+    _XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+  xmlns:cac-place-ext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2"
+  xmlns:cbc-place-ext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2"
+  xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2">
+  <entry><cac-place-ext:ContractFolderStatus>
+    <cac-place-ext:ValidNoticeInfo>
+      <cbc-place-ext:NoticeTypeCode>DOC_CN</cbc-place-ext:NoticeTypeCode>
+      <cac-place-ext:AdditionalPublicationStatus>
+        <cbc-place-ext:PublicationMediaName>DOUE</cbc-place-ext:PublicationMediaName>
+        <cac-place-ext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2026-10-21</cbc:IssueDate>
+        </cac-place-ext:AdditionalPublicationDocumentReference>
+      </cac-place-ext:AdditionalPublicationStatus>
+      <cac-place-ext:AdditionalPublicationStatus>
+        <cbc-place-ext:PublicationMediaName>Perfil</cbc-place-ext:PublicationMediaName>
+        <cac-place-ext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2026-10-20</cbc:IssueDate>
+        </cac-place-ext:AdditionalPublicationDocumentReference>
+      </cac-place-ext:AdditionalPublicationStatus>
+    </cac-place-ext:ValidNoticeInfo>
+  </cac-place-ext:ContractFolderStatus></entry>
+</feed>"""
+
+    def _notice(self, parser: ValidNoticeInfoParser):  # type: ignore[no-untyped-def]
+        entry = get_entries(parse_xml(self._XML))[0]
+        return parser.parse(find_first(entry, "ContractFolderStatus")).notices[0]
+
+    def test_each_publication_keeps_its_date(
+        self, parser: ValidNoticeInfoParser
+    ) -> None:
+        dates = [s.issue_date for s in self._notice(parser).publication_statuses]
+        assert dates == [date(2026, 10, 21), date(2026, 10, 20)]
+
+    def test_notice_date_is_first_publication(
+        self, parser: ValidNoticeInfoParser
+    ) -> None:
+        assert self._notice(parser).notice_issue_date == date(2026, 10, 20)

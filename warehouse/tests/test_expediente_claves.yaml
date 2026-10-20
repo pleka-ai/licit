@@ -1,0 +1,22 @@
+test_publicacion_y_cpv_principal:
+  model: stage.expediente_claves
+  description: The publication date is the earliest of the first dated notice and the first observed status; the main CPV is the first folder-level code, not a lot code; a missing contracting party maps to the 'desconocido' member.
+  inputs:
+    stage.contract_folder_status:
+      rows:
+        - {licitacion_key: 1, entry_id: e1, updated: '2025-03-01 10:00:00+00', organo_ref: null, status_code: PUB}
+    stage.status_change:
+      rows:
+        - {licitacion_key: 1, entry_id: e1, status_code: PUB, updated: '2025-03-01 10:00:00+00'}
+    stage.valid_notice_info:
+      rows:
+        - {licitacion_key: 1, entry_id: e1, n: 1, notice_type_code: DOC_CN, notice_issue_date: '2025-02-20'}
+    stage.cpv_classification:
+      rows:
+        - {licitacion_key: 1, entry_id: e1, n: 1, lot_number: '1', cpv_code: '30200000'}
+        - {licitacion_key: 1, entry_id: e1, n: 2, lot_number: null, cpv_code: '72000000'}
+  outputs:
+    query:
+      partial: true
+      rows:
+        - {licitacion_key: 1, fecha_publicacion: '2025-02-20 00:00:00+00', cpv_code: '72000000', organo_key: 0}
