@@ -3,7 +3,7 @@ MODEL (
   kind FULL,
   depends_on (modelo.sociedad),
   grain empresa_key,
-  description 'Empresa adjudicataria identificada por NIF (o por nombre si PLACSP no da NIF), con el nombre y domicilio de su adjudicación más reciente. sociedad_key la enlaza con su sociedad del BORME cuando alguno de sus nombres en PLACSP, normalizado, coincide con los de una sola sociedad (-1 si no).',
+  description 'Empresa adjudicataria identificada por NIF (o por nombre si PLACSP no da NIF), con el nombre y domicilio de su adjudicación más reciente. sociedad_key la enlaza con su sociedad del BORME cuando alguno de sus nombres en PLACSP, normalizado, coincide con los de una sola sociedad, o, si ninguno coincide, cuando lo hace sin la forma jurídica (-1 si no).',
   audits (
     not_null(columns := (empresa_key, nombre)),
     unique_values(columns := (empresa_key)),
@@ -19,20 +19,43 @@ WITH apariciones AS (
   JOIN stage.contract_folder_status AS f USING (entry_id)
 ),
 -- Every name a winner has used in PLACSP against every name a company has
--- had in the BORME; kept only when they point to a single company. UTEs are
--- not registered companies.
-cruce AS (
+-- had in the BORME; kept only when they point to a single company. When no
+-- name matches at all, the same is tried ignoring the legal form ('X SLU' in
+-- PLACSP, 'X SL' in the BORME), only for names that carry one, so a person is
+-- never matched to a company named after them. UTEs are not registered
+-- companies.
+nombres AS (
+  SELECT DISTINCT
+    empresa_ref,
+    @nombre_normalizado(name) AS nombre_normalizado
+  FROM stage.winning_party
+  WHERE coalesce(identifier_scheme, '') <> 'UTE'
+),
+exacto AS (
   SELECT
     w.empresa_ref,
     CASE WHEN count(DISTINCT n.sociedad_ref) = 1 THEN any_value(n.sociedad_ref) END
       AS sociedad_ref
-  FROM (
-    SELECT DISTINCT empresa_ref, @nombre_normalizado(name) AS nombre_normalizado
-    FROM stage.winning_party
-    WHERE coalesce(identifier_scheme, '') <> 'UTE'
-  ) AS w
+  FROM nombres AS w
   JOIN stage.sociedad_nombre AS n USING (nombre_normalizado)
   GROUP BY w.empresa_ref
+),
+sin_forma AS (
+  SELECT
+    w.empresa_ref,
+    CASE WHEN count(DISTINCT n.sociedad_ref) = 1 THEN any_value(n.sociedad_ref) END
+      AS sociedad_ref
+  FROM nombres AS w
+  JOIN stage.sociedad_nombre AS n
+    ON n.nombre_base = @sin_forma_juridica(w.nombre_normalizado)
+  WHERE @forma_juridica(w.nombre_normalizado) IS NOT NULL
+    AND w.empresa_ref NOT IN (SELECT empresa_ref FROM exacto)
+  GROUP BY w.empresa_ref
+),
+cruce AS (
+  SELECT empresa_ref, sociedad_ref FROM exacto
+  UNION ALL
+  SELECT empresa_ref, sociedad_ref FROM sin_forma
 ),
 actual AS (
   SELECT

@@ -114,6 +114,8 @@ LEGAL_FORM_TOKENS: tuple[str, ...] = (
     "SA",
     "SCOOP",
 )
+# A legal-form token closing a normalized name.
+_FORM_AT_END = r"(?:^| )(" + "|".join(LEGAL_FORM_TOKENS) + r")$"
 
 
 @macro()
@@ -155,13 +157,29 @@ def forma_juridica(
 ) -> exp.Expression:
     """Legal-form token at the end of a normalized name, NULL if none."""
     del evaluator
-    pattern = r"(?:^| )(" + "|".join(LEGAL_FORM_TOKENS) + r")$"
     extract = exp.RegexpExtract(
         this=normalized,
-        expression=exp.Literal.string(pattern),
+        expression=exp.Literal.string(_FORM_AT_END),
         group=exp.Literal.number(1),
     )
     return exp.func("nullif", extract, exp.Literal.string(""))
+
+
+@macro()
+def sin_forma_juridica(
+    evaluator: MacroEvaluator, normalized: exp.Expression
+) -> exp.Expression:
+    """A normalized name without its trailing legal-form token.
+
+    'INDRA SISTEMAS SAU' and 'INDRA SISTEMAS SA' both become 'INDRA SISTEMAS'.
+    """
+    del evaluator
+    stripped = exp.RegexpReplace(
+        this=normalized,
+        expression=exp.Literal.string(_FORM_AT_END),
+        replacement=exp.Literal.string(""),
+    )
+    return exp.func("nullif", exp.func("trim", stripped), exp.Literal.string(""))
 
 
 @macro()
