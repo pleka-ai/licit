@@ -142,7 +142,9 @@ class Downloader:
             return
         try:
             resp = await self._get(http, self.settings.borme_xml_url.format(id=item.id))
-        except RuntimeError:
+        except (RuntimeError, httpx.HTTPStatusError) as exc:
+            # Reported per document: one refused file must not stop the year.
+            logger.warning("BOE document=%s error=%s", item.id, exc)
             resp = None
         if resp is None:
             self.result.failed.append(item.id)
