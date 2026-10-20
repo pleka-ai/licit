@@ -97,18 +97,24 @@ async function serveData(request, env, url, ctx) {
 
   const obj = await env.DATA.get(key, { range: request.headers, onlyIf: request.headers });
   if (obj === null) return new Response("Not found", { status: 404 });
-  const headers = dataHeaders(obj);
+  const headers = dataHeaders(obj, url);
   if (!("body" in obj)) return new Response(null, { status: 304, headers });
   headers.set("content-length", String(obj.size));
   return new Response(request.method === "HEAD" ? null : obj.body, { headers });
 }
 
-function dataHeaders(obj) {
+// Files are replaced in place every day. Versioned URLs (?v=<etag>, as the
+// explorer requests them) are immutable; bare URLs must never be served from a
+// browser cache, or ranges of two versions get mixed.
+function dataHeaders(obj, url) {
   const headers = new Headers();
   obj.writeHttpMetadata(headers);
   headers.set("etag", obj.httpEtag);
   headers.set("accept-ranges", "bytes");
-  headers.set("cache-control", "public, max-age=3600");
+  headers.set(
+    "cache-control",
+    url.searchParams.get("v") === obj.etag ? "public, max-age=31536000, immutable" : "no-store",
+  );
   headers.set("access-control-allow-origin", "*");
   headers.set("access-control-expose-headers", "content-range, content-length, etag");
   return headers;
@@ -135,7 +141,7 @@ async function cachedRange(env, ctx, url, key, range) {
 
   const obj = await env.DATA.get(key, { range: new Headers({ range }) });
   if (obj === null) return new Response("Not found", { status: 404 });
-  const headers = dataHeaders(obj);
+  const headers = dataHeaders(obj, url);
   const { offset = 0, length = obj.size - offset } = obj.range || {};
   const contentRange = `bytes ${offset}-${offset + length - 1}/${obj.size}`;
   const body = await obj.arrayBuffer();
@@ -157,11 +163,11 @@ async function dataIndex(env) {
   do {
     const page = await env.DATA.list({ prefix: "parquet/", cursor });
     for (const o of page.objects) {
-      files.push({ ruta: `/data/${o.key}`, bytes: o.size, subido: o.uploaded });
+      files.push({ ruta: `/data/${o.key}`, version: o.etag, bytes: o.size, subido: o.uploaded });
     }
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
-  return json({ ficheros: files }, 200, { "cache-control": "public, max-age=300" });
+  return json({ ficheros: files }, 200, { "cache-control": "no-cache" });
 }
 
 // ---------------------------------------------------------------------- API
