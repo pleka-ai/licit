@@ -21,6 +21,22 @@ perdida_unipersonalidad AS (
   FROM modelo.acto_registral
   WHERE tipo = 'Pérdida del carácter de unipersonalidad'
   GROUP BY sociedad_key
+),
+vigentes AS (
+  SELECT
+    m.*,
+    -- A company has one sole member: the latest declaration replaces the
+    -- earlier ones, which the BORME does not close with a removal.
+    row_number() OVER (
+      PARTITION BY m.sociedad_key, m.cargo_tipo
+      ORDER BY m.fecha DESC, m.documento DESC, m.anuncio DESC, m.acto_n DESC, m.cargo_n DESC
+    ) AS rn_tipo
+  FROM movimientos AS m
+  LEFT JOIN perdida_unipersonalidad AS u USING (sociedad_key)
+  WHERE m.rn = 1
+    AND m.movimiento IN ('Nombramiento', 'Reelección', 'Socio único')
+    -- coalesce: most companies never lose the status (no row in u).
+    AND NOT (m.cargo_tipo = 'Socio único' AND coalesce(u.fecha > m.fecha, FALSE))
 )
 SELECT
   m.sociedad_key,
@@ -31,11 +47,8 @@ SELECT
   s.nombre AS sociedad,
   p.nombre AS persona,
   p.es_persona_juridica
-FROM movimientos AS m
+FROM vigentes AS m
 JOIN modelo.sociedad AS s USING (sociedad_key)
 JOIN modelo.persona AS p USING (persona_key)
-LEFT JOIN perdida_unipersonalidad AS u USING (sociedad_key)
-WHERE m.rn = 1
-  AND m.movimiento IN ('Nombramiento', 'Reelección', 'Socio único')
-  AND s.estado <> 'Extinguida'
-  AND NOT (m.cargo_tipo = 'Socio único' AND u.fecha > m.fecha)
+WHERE s.estado <> 'Extinguida'
+  AND (m.cargo_tipo <> 'Socio único' OR m.rn_tipo = 1)
