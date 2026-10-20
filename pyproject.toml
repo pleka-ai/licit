@@ -17,6 +17,7 @@ dependencies = [
   "pydantic>=2.12.5",
   "pydantic-settings>=2.12.0",
   "pytz>=2026.5",
+  "sqlmesh>=0.236.3",
   "uvicorn[standard]>=0.34.0",
 ]
 
