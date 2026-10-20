@@ -1,6 +1,7 @@
 MODEL (
   name modelo.cpv,
   kind FULL,
+  tags (dimension),
   grain cpv_key,
   description 'Vocabulario Común de Contratos Públicos con su jerarquía aplanada (división, grupo, clase, categoría).',
   audits (

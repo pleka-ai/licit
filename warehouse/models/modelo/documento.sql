@@ -1,6 +1,7 @@
 MODEL (
   name modelo.documento,
   kind FULL,
+  tags (hecho),
   depends_on (modelo.tipo_documento, modelo.organo),
   grain (licitacion_key, documento_n),
   description 'Hecho sin medidas: cada documento publicado del expediente (pliegos, documentación adicional, anuncios en PDF).',

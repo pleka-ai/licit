@@ -1052,6 +1052,14 @@ li code {
   white-space: nowrap;
 }
 
+.pg-schema li.pg-about {
+  display: block;
+  color: var(--fg-faint);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  padding-bottom: 0.3rem;
+}
+
 .pg-schema details details > summary {
   display: flex;
   flex-direction: column;

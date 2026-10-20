@@ -45,13 +45,26 @@ FROM modelo.licitacion
 """
 
 
-def build(raw_dir: Path, database: Path) -> None:
-    """Run every warehouse model over ``raw_dir`` into ``database``."""
+def build(raw_dir: Path, database: Path) -> dict[str, dict[str, str]]:
+    """Run every warehouse model over ``raw_dir`` into ``database``.
+
+    Returns each published table's role (its SQLMesh tag: dimension, hecho,
+    puente, agregado) and description, for the manifest.
+    """
     os.environ["RAW_PATH"] = str(raw_dir.resolve())
     os.environ["WAREHOUSE_DB"] = str(database.resolve())
     context = Context(paths=str(WAREHOUSE_DIR))
     try:
         context.plan(auto_apply=True, no_prompts=True)
+        docs = {}
+        for model in context.models.values():
+            schema, _, table = model.name.replace('"', "").rpartition(".")
+            if schema.rpartition(".")[2] in SCHEMAS:
+                docs[table] = {
+                    "tipo": next(iter(model.tags), ""),
+                    "descripcion": model.description or "",
+                }
+        return docs
     finally:
         context.close()
 
@@ -76,8 +89,14 @@ def _select(con: duckdb.DuckDBPyConnection, schema: str, table: str) -> str:
     return f"SELECT {', '.join(exprs)} FROM {schema}.{table}{order_by}"
 
 
-def publish(database: Path, out_dir: Path) -> dict[str, object]:
-    """Copy every model and aggregate table to Parquet; return the manifest."""
+def publish(
+    database: Path, out_dir: Path, docs: dict[str, dict[str, str]] | None = None
+) -> dict[str, object]:
+    """Copy every model and aggregate table to Parquet; return the manifest.
+
+    The manifest lists each table's role, description and columns, so the
+    explorer can show the schema without opening every file.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(database), read_only=True)
     con.execute("SET TimeZone = 'UTC'")
@@ -95,9 +114,15 @@ def publish(database: Path, out_dir: Path) -> dict[str, object]:
                 f"COPY ({_select(con, schema, table)}) TO '{path}' ({_COPY_OPTS})"
             )
             row = con.execute(f"SELECT count(*) FROM '{path}'").fetchone()
+            columns = con.execute(
+                "SELECT column_name, column_type"
+                f" FROM (DESCRIBE SELECT * FROM '{path}')"
+            ).fetchall()
             tables[table] = {
                 "file": path.name,
                 "capa": schema,
+                **(docs or {}).get(table, {}),
+                "columnas": [list(c) for c in columns],
                 "rows": row[0] if row else 0,
                 "bytes": path.stat().st_size,
             }
@@ -120,8 +145,8 @@ def export(out_dir: Path, raw_dir: Path) -> dict[str, object]:
     """Build the model over ``raw_dir`` and publish it to ``out_dir``."""
     with tempfile.TemporaryDirectory() as tmp:
         database = Path(tmp) / "warehouse.duckdb"
-        build(raw_dir, database)
-        return publish(database, out_dir)
+        docs = build(raw_dir, database)
+        return publish(database, out_dir, docs)
 
 
 def main(argv: list[str] | None = None) -> None:

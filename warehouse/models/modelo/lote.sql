@@ -1,6 +1,7 @@
 MODEL (
   name modelo.lote,
   kind FULL,
+  tags (hecho),
   depends_on (modelo.organo, modelo.modalidad, modelo.estado, modelo.cpv, modelo.lugar),
   grain (licitacion_key, lote_numero),
   description 'Objeto del contrato al nivel más atómico: una fila por lote; los expedientes sin lotes tienen una sola fila (lote_numero = 0, es_objeto_unico) con el presupuesto del expediente. Sumar presupuesto_sin_iva aquí nunca cuenta dos veces.',

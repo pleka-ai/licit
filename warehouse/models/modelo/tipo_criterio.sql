@@ -1,6 +1,7 @@
 MODEL (
   name modelo.tipo_criterio,
   kind FULL,
+  tags (dimension),
   grain tipo_criterio_key,
   description 'Tipo y subtipo de criterio de adjudicación (automático o por juicio de valor; precio, calidad…).',
   audits (

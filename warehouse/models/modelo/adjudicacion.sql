@@ -1,6 +1,7 @@
 MODEL (
   name modelo.adjudicacion,
   kind FULL,
+  tags (hecho),
   depends_on (modelo.empresa, modelo.organo, modelo.resultado, modelo.cpv, modelo.lugar, modelo.modalidad),
   grain (licitacion_key, resultado_n, adjudicatario_n),
   description 'Hecho transaccional: un resultado de adjudicación (del expediente o de un lote) por adjudicatario. Si hay varios adjudicatarios, los importes se reparten con `peso`, así que todas las medidas suman. Los resultados sin adjudicatario (desierto, desistimiento) llevan empresa -1.',

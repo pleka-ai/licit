@@ -1,6 +1,7 @@
 MODEL (
   name modelo.condicion_ejecucion,
   kind FULL,
+  tags (hecho),
   depends_on (modelo.tipo_condicion, modelo.organo),
   grain (licitacion_key, condicion_n),
   description 'Hecho sin medidas: condiciones especiales de ejecución del contrato.',

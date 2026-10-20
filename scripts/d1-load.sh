@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Apply worker/schema.sql and every SQL chunk in a directory (in name order:
-# licitacion d1-0001… then derived tables d1-9001…, see export.derived) to the
-# remote D1 database, and make sure it stays under the included storage.
+# table changes d1-0001… from export.d1, then derived rows d1-9001… from
+# export.derived) to the remote D1 database, and make sure it stays under the
+# included storage.
 #
 # D1 runs one import at a time per database: local callers are serialised
 # with a lock, and every call is retried with backoff in case another runner

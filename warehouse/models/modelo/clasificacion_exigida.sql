@@ -1,6 +1,7 @@
 MODEL (
   name modelo.clasificacion_exigida,
   kind FULL,
+  tags (hecho),
   depends_on (modelo.organo),
   grain (licitacion_key, clasificacion_n),
   description 'Hecho sin medidas: clasificación empresarial (grupo, subgrupo, categoría) exigida para licitar.',
