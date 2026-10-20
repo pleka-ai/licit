@@ -23,7 +23,7 @@ Filas: procesos (hechos). Columnas: dimensiones conformadas que comparten.
 
 | Hecho | Grano | calendario | organo | empresa | cpv | lugar | modalidad | estado | otras |
 |---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|---|
-| `licitacion` | expediente (snapshot acumulativo) | ● (13 hitos) | ● | ● adjudicatario principal | ● principal | ● | ● | ● actual | |
+| `licitacion` | expediente (snapshot acumulativo) | ● (13 hitos) | ● | ● adjudicatario principal | ● principal | ● | ● | ● actual | `resultado` principal |
 | `lote` | lote; un "objeto único" si no hay lotes | ● | ● | | ● | ● | ● | ● | |
 | `adjudicacion` | resultado × adjudicatario | ● (adjudicación, formalización, inicio) | ● | ● | ● | ● | ● | | `resultado` |
 | `cambio_estado` | expediente × estado observado | ● | ● | | | | | ● | |

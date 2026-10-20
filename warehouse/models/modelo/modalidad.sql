@@ -1,6 +1,7 @@
 MODEL (
   name modelo.modalidad,
   kind FULL,
+  tags (dimension),
   grain modalidad_key,
   description 'Dimensión basura con cómo se contrata: tipo y subtipo de contrato, procedimiento, tramitación, sistema, forma de presentación, flags de regulación y financiación, y la plataforma de origen. Solo combinaciones observadas.',
   audits (

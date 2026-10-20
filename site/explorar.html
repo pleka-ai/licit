@@ -28,7 +28,7 @@
         <header class="pg-head">
           <div>
             <h1>Explorar<span class="cursor">_</span></h1>
-            <p class="lead">SQL sobre 1,6 millones de licitaciones públicas desde 2017. La consulta se ejecuta en tu navegador con DuckDB y solo descarga los trozos de datos que necesita.</p>
+            <p class="lead">SQL sobre 1,6 millones de licitaciones públicas desde 2017, organizadas como un modelo dimensional: hechos (licitaciones, adjudicaciones, lotes…) y dimensiones (órganos, empresas, CPV, lugares…) unidos por sus columnas <code>_key</code>. La consulta se ejecuta en tu navegador con DuckDB y solo descarga los trozos de datos que necesita.</p>
           </div>
           <span class="pg-status" id="status" data-state="loading"><i></i><b id="status-text">Descargando motor…</b></span>
         </header>
@@ -91,7 +91,9 @@
   <script type="module">
     import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm";
 
-    // Small pre-aggregated tables answer instantly; "licitacion" scans 1.6M rows
+    // The data is a dimensional model: facts (licitacion, adjudicacion, lote…)
+    // joined to dimensions (organo, empresa, cpv, lugar, modalidad…) by their
+    // *_key columns. Aggregates answer instantly; facts scan millions of rows
     // in the browser (several seconds the first time, faster once cached).
     const EXAMPLES = [
       {
@@ -122,6 +124,7 @@ LIMIT 20;`,
         speed: "instantánea",
         sql: `SELECT adjudicatario,
        contratos,
+       organos,
        round(importe_adjudicado / 1e6, 1) AS millones_eur
 FROM resumen_empresa
 ORDER BY contratos DESC
@@ -141,77 +144,98 @@ ORDER BY presupuesto_sin_iva DESC
 LIMIT 50;`,
       },
       {
-        title: "Tipos de contrato",
-        desc: "Reparto por tipo",
-        speed: "instantánea",
-        sql: `SELECT tipo_contrato,
-       sum(licitaciones) AS licitaciones,
-       round(sum(importe_licitado) / 1e6) AS millones_eur
-FROM resumen_mensual
-GROUP BY tipo_contrato
-ORDER BY licitaciones DESC;`,
+        title: "Por comunidad",
+        desc: "Presupuesto por lote y CCAA",
+        speed: "millones de filas",
+        sql: `-- lote: un lote por fila (o el expediente entero si no tiene lotes),
+-- así que sumar presupuestos no cuenta nada dos veces.
+SELECT g.nuts2 AS comunidad,
+       count(*) AS lotes,
+       round(sum(o.presupuesto_sin_iva) / 1e6) AS millones_eur
+FROM lote o
+JOIN lugar g USING (lugar_key)
+WHERE g.pais_codigo = 'ES' AND g.nuts2 IS NOT NULL
+GROUP BY comunidad
+ORDER BY millones_eur DESC;`,
       },
       {
         title: "Baja media por sector",
-        desc: "Descuento sobre el presupuesto, por CPV",
-        speed: "1,6 M filas",
-        sql: `SELECT substr(cpv_principal, 1, 2) AS cpv,
-       any_value(cpv_principal_desc) AS ejemplo,
-       count(*) AS adjudicadas,
-       round(avg(100 * (presupuesto_sin_iva - importe_adjudicacion)
-                 / presupuesto_sin_iva), 1) AS baja_media_pct
-FROM licitacion
-WHERE importe_adjudicacion > 0 AND presupuesto_sin_iva > 0
+        desc: "Descuento sobre el presupuesto, por división CPV",
+        speed: "millones de filas",
+        sql: `SELECT c.division_codigo AS cpv,
+       any_value(c.division) AS division,
+       count(*) AS adjudicaciones,
+       round(avg(100 * (a.presupuesto_sin_iva - a.importe_sin_iva)
+                 / a.presupuesto_sin_iva), 1) AS baja_media_pct
+FROM adjudicacion a
+JOIN cpv c USING (cpv_key)
+JOIN resultado r USING (resultado_key)
+WHERE r.es_adjudicacion AND a.importe_sin_iva > 0 AND a.presupuesto_sin_iva > 0
 GROUP BY cpv
-HAVING adjudicadas > 100
+HAVING adjudicaciones > 100
 ORDER BY baja_media_pct DESC;`,
       },
       {
         title: "Competencia",
-        desc: "Licitadores medios por tipo",
-        speed: "1,6 M filas",
-        sql: `SELECT tipo_contrato,
-       round(avg(num_licitadores), 1) AS licitadores_medios,
-       count(*) FILTER (WHERE num_licitadores = 1) AS con_un_solo_licitador
-FROM licitacion
-WHERE num_licitadores > 0
-GROUP BY tipo_contrato
-ORDER BY licitadores_medios DESC;`,
+        desc: "Ofertas por procedimiento",
+        speed: "millones de filas",
+        sql: `SELECT m.procedimiento,
+       round(avg(a.num_ofertas), 1) AS ofertas_medias,
+       round(100 * avg((a.num_ofertas = 1)::INT), 1) AS pct_una_sola_oferta
+FROM adjudicacion a
+JOIN modalidad m USING (modalidad_key)
+WHERE a.num_ofertas > 0
+GROUP BY m.procedimiento
+HAVING count(*) > 100
+ORDER BY ofertas_medias DESC;`,
+      },
+      {
+        title: "Tiempo hasta adjudicar",
+        desc: "Días desde la publicación, por tipo",
+        speed: "millones de filas",
+        sql: `-- licitacion es un snapshot acumulativo: una fila por expediente
+-- con las fechas de cada hito de su ciclo de vida.
+SELECT m.tipo_contrato,
+       count(*) AS adjudicadas,
+       median(l.dias_hasta_adjudicacion) AS mediana_dias,
+       quantile_cont(l.dias_hasta_adjudicacion, 0.9) AS p90_dias
+FROM licitacion l
+JOIN modalidad m USING (modalidad_key)
+WHERE l.dias_hasta_adjudicacion BETWEEN 0 AND 1000
+GROUP BY m.tipo_contrato
+HAVING adjudicadas > 100
+ORDER BY mediana_dias;`,
       },
       {
         title: "Buscar por texto",
         desc: "Ciberseguridad en el último año",
-        speed: "1,6 M filas",
-        sql: `SELECT fecha_publicacion::DATE AS fecha,
-       titulo,
-       organo,
-       presupuesto_sin_iva
-FROM licitacion
-WHERE fecha_publicacion >= current_date - INTERVAL 1 YEAR
-  AND titulo ILIKE '%ciberseguridad%'
-ORDER BY fecha_publicacion DESC
+        speed: "millones de filas",
+        sql: `SELECT l.fecha_publicacion::DATE AS fecha,
+       l.titulo,
+       o.nombre AS organo,
+       l.presupuesto_sin_iva
+FROM licitacion l
+JOIN organo o USING (organo_key)
+WHERE l.fecha_publicacion >= current_date - INTERVAL 1 YEAR
+  AND l.titulo ILIKE '%ciberseguridad%'
+ORDER BY l.fecha_publicacion DESC
 LIMIT 50;`,
       },
     ];
 
-    const TABLES = [
-      ["licitacion", "1,6 M filas · todas las licitaciones"],
-      ["licitacion_abierta", "en plazo hoy"],
-      ["adjudicacion", "una fila por adjudicatario"],
-      ["lote", "lotes"],
-      ["cpv", "códigos CPV"],
-      ["empresa", "adjudicatarias"],
-      ["resumen_mensual", "mes × tipo"],
-      ["resumen_organo", "por órgano"],
-      ["resumen_empresa", "por empresa"],
-    ];
+    // Tables come from the model's manifest: name, role, description, columns.
+    const MODEL = "/data/parquet/modelo";
+    const ROLES = { hecho: "hecho", puente: "puente", dimension: "dimensión", agregado: "agregado" };
+    let TABLES = [];
 
     const KEYWORDS = new Set(("select from where group by order having limit offset as and or not in is null like ilike between " +
       "case when then else end join left right inner outer on using with union all distinct desc asc filter over partition " +
       "interval year month day current_date true false cast create view qualify window").split(" "));
 
-    // Data always comes from licit.es (CORS-enabled), also on previews.
-    const DATA = location.hostname === "licit.es" ? location.origin : "https://licit.es";
+    // Data comes from licit.es (CORS-enabled) on previews; same origin on
+    // licit.es and on a local `wrangler dev`.
+    const SAME_ORIGIN = ["licit.es", "localhost", "127.0.0.1"].includes(location.hostname);
+    const DATA = SAME_ORIGIN ? location.origin : "https://licit.es";
 
     const $ = (id) => document.getElementById(id);
     const sql = $("sql");
@@ -225,7 +249,7 @@ LIMIT 50;`,
     // ---------------------------------------------------------------- editor
 
     const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
-    const tableNames = new Set(TABLES.map(([t]) => t));
+    const tableNames = new Set();
 
     function highlight(src) {
       const re = /(--[^\n]*)|('(?:[^']|'')*'?)|(\b\d+(?:\.\d+)?(?:e\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)(\s*\()?|([^\w'-]+|-)/g;
@@ -336,44 +360,64 @@ LIMIT 50;`,
       conn = await db.connect();
 
       status("loading", "Conectando datos…");
-      // One compacted file per table (rebuilt daily), requested by version so
-      // a new upload never mixes with cached byte ranges.
+      // One file per table (rebuilt daily), requested by version so a new
+      // upload never mixes with cached byte ranges.
       const index = await (await fetch(`${DATA}/data/index.json`, { cache: "no-store" })).json();
-      const version = Object.fromEntries(index.ficheros.map((f) => [f.ruta, f.version]));
-      for (const [t] of TABLES) {
-        const ruta = `/data/parquet/todo/${t}.parquet`;
-        const src = `${DATA}${ruta}?v=${version[ruta] || Date.now()}`;
-        await conn.query(`CREATE VIEW ${t} AS SELECT * FROM read_parquet('${src}')`);
-      }
+      versions = Object.fromEntries(index.ficheros.map((f) => [f.ruta, f.version]));
+      const manifest = await (await fetch(fileUrl(`${MODEL}/manifest.json`))).json();
+      const order = Object.keys(ROLES);
+      TABLES = Object.entries(manifest.tablas)
+        .map(([name, t]) => ({ name, ...t }))
+        .sort((a, b) => order.indexOf(a.tipo) - order.indexOf(b.tipo) || b.rows - a.rows);
+      for (const t of TABLES) tableNames.add(t.name);
+      syncEditor();
       status("ready", `Listo · DuckDB ${await db.getVersion()}`);
       run.disabled = false;
-      await execute();
       loadSchema();
+      await execute();
     }
 
-    async function loadSchema() {
-      const res = await conn.query(
-        `SELECT table_name, column_name, data_type FROM duckdb_columns()
-         WHERE table_name IN (${TABLES.map(([t]) => `'${t}'`).join(", ")})`,
-      );
-      const cols = {};
-      for (const r of res.toArray()) (cols[r.table_name] ||= []).push([r.column_name, r.data_type]);
+    let versions = {};
+    const created = new Set();
+
+    function fileUrl(ruta) {
+      return `${DATA}${ruta}?v=${versions[ruta] || Date.now()}`;
+    }
+
+    // Views are created on first use, so opening the page reads no Parquet.
+    async function ensureViews(query) {
+      for (const { name } of TABLES) {
+        if (created.has(name) || !new RegExp(`\\b${name}\\b`, "i").test(query)) continue;
+        const src = fileUrl(`${MODEL}/${name}.parquet`);
+        await conn.query(`CREATE VIEW ${name} AS SELECT * FROM read_parquet('${src}')`);
+        created.add(name);
+      }
+    }
+
+    function loadSchema() {
       const ul = $("schema");
       ul.replaceChildren();
-      for (const [t, desc] of TABLES) {
+      for (const t of TABLES) {
         const li = document.createElement("li");
         const d = document.createElement("details");
         const s = document.createElement("summary");
+        s.title = t.descripcion || "";
         const name = document.createElement("button");
         name.type = "button";
         name.className = "pg-ident";
-        name.textContent = t;
-        name.onclick = (e) => { e.preventDefault(); insertAtCursor(t); };
+        name.textContent = t.name;
+        name.onclick = (e) => { e.preventDefault(); insertAtCursor(t.name); };
         const small = document.createElement("small");
-        small.textContent = desc;
+        small.textContent = `${ROLES[t.tipo] || t.tipo} · ${Number(t.rows).toLocaleString("es-ES")} filas`;
         s.append(name, small);
         const list = document.createElement("ul");
-        for (const [c, type] of cols[t] || []) {
+        if (t.descripcion) {
+          const about = document.createElement("li");
+          about.className = "pg-about";
+          about.textContent = t.descripcion;
+          list.appendChild(about);
+        }
+        for (const [c, type] of t.columnas || []) {
           const item = document.createElement("li");
           const b = document.createElement("button");
           b.type = "button";
@@ -381,7 +425,7 @@ LIMIT 50;`,
           b.textContent = c;
           b.onclick = () => insertAtCursor(c);
           const ty = document.createElement("span");
-          ty.textContent = type.toLowerCase().replace("timestamp with time zone", "timestamptz");
+          ty.textContent = type.toLowerCase();
           item.append(b, ty);
           list.appendChild(item);
         }
@@ -402,6 +446,7 @@ LIMIT 50;`,
       $("meta").textContent = "Ejecutando…";
       const t0 = performance.now();
       try {
+        await ensureViews(sql.value);
         const res = await conn.query(sql.value);
         const fields = res.schema.fields.map((f) => ({
           name: f.name,

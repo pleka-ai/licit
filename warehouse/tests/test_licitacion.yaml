@@ -50,6 +50,7 @@ test_licitacion_snapshot_acumulativo:
         - id: a4c8e5bb-b434-6be6-2c37-c4b26c8cd284
           expediente: EXP-1
           adjudicatario_key: 502
+          resultado_key: 100
           fecha_en_plazo: '2025-01-20'
           fecha_evaluacion: '2025-02-11'
           fecha_resuelta: '2025-04-01'

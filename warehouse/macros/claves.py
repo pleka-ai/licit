@@ -2,8 +2,11 @@
 
 Keys are deterministic: the same business key always yields the same BIGINT,
 so every daily rebuild, the D1 diff sync and the explorer agree on them
-without a key-mapping table. Reserved members follow the Kimball convention
-of never leaving a foreign key NULL.
+without a key-mapping table. They keep 52 bits so they survive a round trip
+through JavaScript numbers (the Worker reads D1 rows as JS numbers); the
+uniqueness audits on every dimension and fact catch the unlikely collision.
+Reserved members follow the Kimball convention of never leaving a foreign key
+NULL.
 """
 
 from __future__ import annotations
@@ -14,6 +17,8 @@ from sqlmesh.core.macros import MacroEvaluator
 
 DESCONOCIDO = 0
 NO_APLICA = -1
+# md5_number_lower is 64 bits; shifting by 12 leaves 52 (JS-safe integers).
+KEY_SHIFT = 12
 
 
 @macro()
@@ -34,7 +39,8 @@ def clave(
     )
     hashed = exp.cast(
         exp.BitwiseRightShift(
-            this=exp.func("md5_number_lower", joined), expression=exp.Literal.number(1)
+            this=exp.func("md5_number_lower", joined),
+            expression=exp.Literal.number(KEY_SHIFT),
         ),
         "bigint",
     )

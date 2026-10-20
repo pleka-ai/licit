@@ -1,6 +1,7 @@
 MODEL (
   name agregado.resumen_mensual,
   kind FULL,
+  tags (agregado),
   grain (mes, tipo_contrato),
   description 'Agregado: licitaciones e importe licitado por mes de publicación y tipo de contrato.'
 );

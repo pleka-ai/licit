@@ -1,6 +1,7 @@
 MODEL (
   name modelo.criterio_adjudicacion,
   kind FULL,
+  tags (hecho),
   depends_on (modelo.tipo_criterio, modelo.organo),
   grain (licitacion_key, criterio_n),
   description 'Criterios de adjudicación con su ponderación, del expediente (lote_numero NULL) o de un lote.',

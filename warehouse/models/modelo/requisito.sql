@@ -1,6 +1,7 @@
 MODEL (
   name modelo.requisito,
   kind FULL,
+  tags (hecho),
   depends_on (modelo.tipo_requisito, modelo.organo),
   grain (licitacion_key, requisito_n),
   description 'Requisitos de participación: solvencia técnica y económica (con umbrales) y declaraciones exigidas.',

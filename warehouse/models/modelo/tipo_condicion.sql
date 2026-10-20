@@ -1,6 +1,7 @@
 MODEL (
   name modelo.tipo_condicion,
   kind FULL,
+  tags (dimension),
   grain tipo_condicion_key,
   description 'Tipo de condición especial de ejecución (social, medioambiental, innovación…).',
   audits (

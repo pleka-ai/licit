@@ -1,8 +1,9 @@
 name: Historico
 
-# One-off back-fill of archived PLACSP years into D1 (full history) and frozen
-# Parquet under parquet/historico/<año>/. Each year runs on its own fresh
-# Postgres; nothing here touches the daily ETL state.
+# Back-fill of archived PLACSP years. Each year runs on its own fresh Postgres
+# and publishes its raw export to parquet/raw/historico/<año>/. A final job
+# merges every year into the raw history, rebuilds the dimensional model and
+# syncs it to R2 and D1, serialised with the daily ETL.
 
 on:
   workflow_dispatch:
@@ -15,6 +16,18 @@ on:
 concurrency:
   group: historico
   cancel-in-progress: false
+
+env:
+  PYTHONPATH: src
+  ENVIRONMENT: ci
+  AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  AWS_DEFAULT_REGION: auto
+  AWS_ENDPOINT_URL: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  BUCKET: s3://licit-data
+  D1_DATABASE: ${{ vars.D1_DATABASE || 'licit-api' }}
 
 jobs:
   plan:
@@ -55,15 +68,6 @@ jobs:
     env:
       YEAR: ${{ matrix.year }}
       DATABASE_URL: postgresql://licit:licit@localhost:5432/licit
-      ENVIRONMENT: ci
-      PYTHONPATH: src
-      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      AWS_DEFAULT_REGION: auto
-      AWS_ENDPOINT_URL: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      BUCKET: s3://licit-data
     steps:
       - uses: actions/checkout@v4
 
@@ -83,12 +87,52 @@ jobs:
       - name: Ingest archive
         run: uv run python -m etl.handlers.feed_reader --seed --years "$YEAR"
 
-      - name: Publish Parquet
+      - name: Export raw year
         run: |
-          uv run python -m export.parquet "out/parquet"
-          aws s3 cp out/parquet "$BUCKET/parquet/historico/$YEAR/" --recursive --only-show-errors
+          uv run python -m export.raw out/raw
+          aws s3 cp out/raw "$BUCKET/parquet/raw/historico/$YEAR/" --recursive --only-show-errors
 
-      - name: Load D1
+  consolidar:
+    needs: year
+    # Merge whatever years succeeded.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    # Shares the daily ETL's group: both write the raw history, the model and D1.
+    concurrency:
+      group: etl
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - run: uv python install 3.12 && uv sync --frozen
+
+      - name: Merge years into the raw history
+        # Oldest first and the existing history last: later sources win ties.
         run: |
-          uv run python -m export.d1 build out/d1 --todo
+          aws s3 cp "$BUCKET/parquet/raw/historico/" out/raw/historico --recursive --only-show-errors
+          aws s3 cp "$BUCKET/parquet/raw/todo/" out/raw/todo-prev --recursive --only-show-errors
+          srcs=$(find out/raw/historico -mindepth 1 -maxdepth 1 -type d | sort)
+          if [ -f out/raw/todo-prev/contract_folder_status.parquet ]; then
+            srcs="$srcs out/raw/todo-prev"
+          fi
+          uv run python -m export.compact out/raw/todo $srcs
+          aws s3 cp out/raw/todo "$BUCKET/parquet/raw/todo/" --recursive --only-show-errors
+
+      - name: Build dimensional model
+        run: |
+          uv run python -m export.modelo out/modelo out/raw/todo
+          aws s3 cp out/modelo "$BUCKET/parquet/modelo/" --recursive --only-show-errors
+
+      - name: Sync D1
+        run: |
+          aws s3 cp "$BUCKET/state/modelo-d1/" out/modelo-d1 --recursive --only-show-errors
+          uv run python -m export.d1 out/d1 out/modelo out/modelo-d1
+          uv run python -m export.derived out/d1 out/modelo
           ./scripts/d1-load.sh out/d1
+          aws s3 sync out/modelo "$BUCKET/state/modelo-d1/" --delete --only-show-errors

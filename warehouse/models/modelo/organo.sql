@@ -1,6 +1,7 @@
 MODEL (
   name modelo.organo,
   kind FULL,
+  tags (dimension),
   grain organo_key,
   description 'Órgano de contratación (SCD tipo 1: atributos de su publicación más reciente), con la jerarquía administrativa aplanada.',
   audits (

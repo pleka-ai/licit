@@ -1,6 +1,7 @@
 MODEL (
   name modelo.anuncio,
   kind FULL,
+  tags (hecho),
   depends_on (modelo.tipo_anuncio, modelo.organo),
   grain (licitacion_key, anuncio_n, publicacion_n),
   description 'Hecho sin medidas: cada publicación de un anuncio en un medio (perfil del contratante, DOUE, BOE, boletines autonómicos). Los anuncios sin medio tienen publicacion_n = 0.',

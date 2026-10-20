@@ -1,18 +1,20 @@
 MODEL (
   name modelo.licitacion,
   kind FULL,
-  depends_on (modelo.organo, modelo.modalidad, modelo.estado, modelo.cpv, modelo.lugar, modelo.empresa),
+  tags (hecho),
+  depends_on (modelo.organo, modelo.modalidad, modelo.estado, modelo.cpv, modelo.lugar, modelo.empresa, modelo.resultado),
   grain licitacion_key,
   description 'Snapshot acumulativo: una fila por expediente con los hitos de su ciclo de vida (publicación, plazo, cada estado alcanzado, adjudicación, formalización) y medidas acumuladas de sus lotes, adjudicaciones, modificaciones y documentos. Se reescribe cada vez que PLACSP publica una versión nueva del expediente.',
   audits (
-    not_null(columns := (licitacion_key, id, organo_key, modalidad_key, estado_key, cpv_key, lugar_key, adjudicatario_key, fecha_publicacion)),
+    not_null(columns := (licitacion_key, id, organo_key, modalidad_key, estado_key, cpv_key, lugar_key, adjudicatario_key, resultado_key, fecha_publicacion)),
     unique_values(columns := (licitacion_key)),
     unique_values(columns := (id)),
     clave_existe(columna := organo_key, dimension := modelo.organo),
     clave_existe(columna := modalidad_key, dimension := modelo.modalidad),
     clave_existe(columna := estado_key, dimension := modelo.estado),
     clave_existe(columna := cpv_key, dimension := modelo.cpv),
-    clave_existe(columna := lugar_key, dimension := modelo.lugar)
+    clave_existe(columna := lugar_key, dimension := modelo.lugar),
+    clave_existe(columna := resultado_key, dimension := modelo.resultado)
   )
 );
 
@@ -37,11 +39,15 @@ adjudicaciones AS (
     max(a.num_ofertas) AS num_ofertas,
     sum(a.importe_sin_iva) FILTER (WHERE r.es_adjudicacion) AS importe_adjudicado_sin_iva,
     sum(a.importe_con_iva) FILTER (WHERE r.es_adjudicacion) AS importe_adjudicado_con_iva,
-    -- Principal adjudicatario: winner of the latest award, largest amount first.
+    -- Principal result and winner: the latest award, largest amount first.
     arg_max(
       a.empresa_key,
       (a.empresa_key > 0, a.fecha_adjudicacion, a.importe_sin_iva, -a.resultado_n)
-    ) AS adjudicatario_key
+    ) AS adjudicatario_key,
+    arg_max(
+      a.resultado_key,
+      (a.empresa_key > 0, a.fecha_adjudicacion, a.importe_sin_iva, -a.resultado_n)
+    ) AS resultado_key
   FROM modelo.adjudicacion AS a
   JOIN modelo.resultado AS r USING (resultado_key)
   GROUP BY a.licitacion_key
@@ -86,6 +92,7 @@ SELECT
   e.cpv_key,
   e.lugar_key,
   coalesce(a.adjudicatario_key, -1) AS adjudicatario_key,
+  coalesce(a.resultado_key, 0) AS resultado_key,
 
   -- Milestones (dates join modelo.calendario on fecha)
   e.fecha_publicacion,

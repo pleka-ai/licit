@@ -1,6 +1,7 @@
 MODEL (
   name modelo.tipo_requisito,
   kind FULL,
+  tags (dimension),
   grain tipo_requisito_key,
   description 'Clase de requisito de participación: solvencia técnica, económica o declaración, por criterio de evaluación.',
   audits (

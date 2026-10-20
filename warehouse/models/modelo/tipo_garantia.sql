@@ -1,6 +1,7 @@
 MODEL (
   name modelo.tipo_garantia,
   kind FULL,
+  tags (dimension),
   grain tipo_garantia_key,
   description 'Tipo de garantía (provisional, definitiva, complementaria).',
   audits (

@@ -1,6 +1,7 @@
 MODEL (
   name modelo.cambio_estado,
   kind FULL,
+  tags (hecho),
   depends_on (modelo.estado, modelo.organo),
   grain (licitacion_key, momento, estado_key),
   description 'Hecho transaccional: cada estado en que se ha observado un expediente, con cuánto tiempo permaneció en él. Recoge todas las versiones publicadas, no solo la última.',

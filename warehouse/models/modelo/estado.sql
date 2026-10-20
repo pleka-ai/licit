@@ -1,6 +1,7 @@
 MODEL (
   name modelo.estado,
   kind FULL,
+  tags (dimension),
   grain estado_key,
   description 'Estado de un expediente en su ciclo de vida, con la fase y el orden del ciclo.',
   audits (

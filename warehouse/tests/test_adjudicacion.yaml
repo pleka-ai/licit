@@ -34,7 +34,7 @@ test_adjudicacion_reparte_importe_entre_adjudicatarios:
     query:
       partial: true
       rows:
-        # Keys are deterministic: md5('empresa|<NIF>') shifted to a positive BIGINT.
-        - {resultado_n: 1, adjudicatario_n: 1, empresa_key: 6901645180340097599, lote_numero: '1', peso: 0.5, importe_sin_iva: 300.0, presupuesto_sin_iva: 350.0, numero_contrato: C-1, fecha_formalizacion: '2025-03-15', num_ofertas: 4, organo_key: 7, cpv_key: 10}
-        - {resultado_n: 1, adjudicatario_n: 2, empresa_key: 3066884848759454533, lote_numero: '1', peso: 0.5, importe_sin_iva: 300.0, presupuesto_sin_iva: 350.0, numero_contrato: C-1, fecha_formalizacion: '2025-03-15', num_ofertas: 4, organo_key: 7, cpv_key: 10}
+        # Keys are deterministic: md5('empresa|<NIF>') cut to 52 bits.
+        - {resultado_n: 1, adjudicatario_n: 1, empresa_key: 3369943935712938, lote_numero: '1', peso: 0.5, importe_sin_iva: 300.0, presupuesto_sin_iva: 350.0, numero_contrato: C-1, fecha_formalizacion: '2025-03-15', num_ofertas: 4, organo_key: 7, cpv_key: 10}
+        - {resultado_n: 1, adjudicatario_n: 2, empresa_key: 1497502367558327, lote_numero: '1', peso: 0.5, importe_sin_iva: 300.0, presupuesto_sin_iva: 350.0, numero_contrato: C-1, fecha_formalizacion: '2025-03-15', num_ofertas: 4, organo_key: 7, cpv_key: 10}
         - {resultado_n: 2, adjudicatario_n: 0, lote_numero: '2', empresa_key: -1, peso: 1.0, importe_sin_iva: null, presupuesto_sin_iva: 300.0, numero_contrato: null, fecha_formalizacion: null, num_ofertas: null, organo_key: 7, cpv_key: 10}
