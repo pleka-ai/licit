@@ -4,6 +4,8 @@
   "main": "worker/index.js",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
+  // Run next to D1 (WEUR): API calls make several sequential queries.
+  "placement": { "mode": "smart" },
   "assets": {
     "directory": "./site",
     "binding": "ASSETS",
@@ -12,8 +14,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "licit",
-      "database_id": "8dfdc05c-7f8c-4dae-930f-e30c208250fe",
+      "database_name": "licit-api",
+      "database_id": "bd4f71e0-fa34-46af-b6da-ddcc2b1eca46",
       "migrations_dir": "worker"
     }
   ],

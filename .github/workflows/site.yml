@@ -21,6 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Apply D1 schema
-        run: npx --yes wrangler@4 d1 execute licit --remote --yes --file worker/schema.sql
+        run: npx --yes wrangler@4 d1 execute licit-api --remote --yes --file worker/schema.sql
       - name: Deploy Worker
         run: npx --yes wrangler@4 deploy

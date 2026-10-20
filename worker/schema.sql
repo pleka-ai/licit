@@ -47,9 +47,18 @@ CREATE TABLE IF NOT EXISTS licitacion (
   tiene_documentos INTEGER
 );
 
+-- rid follows load order, which is chronological (bulk loads are sorted by
+-- fecha_publicacion and daily rows are appended), so "newest first" is a
+-- reverse rowid scan. Single-column indexes end in rowid, so equality
+-- filters below also come out newest-first without sorting.
 CREATE INDEX IF NOT EXISTS idx_lic_publicacion ON licitacion (fecha_publicacion);
 CREATE INDEX IF NOT EXISTS idx_lic_organo ON licitacion (organo_id);
 CREATE INDEX IF NOT EXISTS idx_lic_adjudicatario ON licitacion (adjudicatario_nif);
+CREATE INDEX IF NOT EXISTS idx_lic_expediente ON licitacion (expediente);
+CREATE INDEX IF NOT EXISTS idx_lic_tipo ON licitacion (type_code);
+CREATE INDEX IF NOT EXISTS idx_lic_estado ON licitacion (status_code);
+CREATE INDEX IF NOT EXISTS idx_lic_cpv ON licitacion (cpv_principal);
+CREATE INDEX IF NOT EXISTS idx_lic_importe ON licitacion (presupuesto_sin_iva);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS licitacion_fts USING fts5(
   titulo, organo, adjudicatario,
@@ -73,6 +82,63 @@ CREATE TRIGGER IF NOT EXISTS licitacion_au AFTER UPDATE OF titulo, organo, adjud
   INSERT INTO licitacion_fts (rowid, titulo, organo, adjudicatario)
   VALUES (new.rid, new.titulo, new.organo, new.adjudicatario);
 END;
+
+-- Derived tables, refreshed by scripts/d1-load.sh after every load so the
+-- API never aggregates the 1.5M-row table at request time.
+
+CREATE TABLE IF NOT EXISTS empresa (
+  rid INTEGER PRIMARY KEY,
+  nif TEXT NOT NULL UNIQUE,
+  nombre TEXT,
+  contratos INTEGER NOT NULL
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS empresa_fts USING fts5(
+  nombre, content='empresa', content_rowid='rid',
+  tokenize='unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER IF NOT EXISTS empresa_ai AFTER INSERT ON empresa BEGIN
+  INSERT INTO empresa_fts (rowid, nombre) VALUES (new.rid, new.nombre);
+END;
+
+CREATE TRIGGER IF NOT EXISTS empresa_au AFTER UPDATE OF nombre ON empresa BEGIN
+  INSERT INTO empresa_fts (empresa_fts, rowid, nombre) VALUES ('delete', old.rid, old.nombre);
+  INSERT INTO empresa_fts (rowid, nombre) VALUES (new.rid, new.nombre);
+END;
+
+CREATE TABLE IF NOT EXISTS organo (
+  rid INTEGER PRIMARY KEY,
+  id TEXT NOT NULL UNIQUE,
+  nombre TEXT,
+  nif TEXT,
+  licitaciones INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_organo_nif ON organo (nif);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS organo_fts USING fts5(
+  nombre, content='organo', content_rowid='rid',
+  tokenize='unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER IF NOT EXISTS organo_ai AFTER INSERT ON organo BEGIN
+  INSERT INTO organo_fts (rowid, nombre) VALUES (new.rid, new.nombre);
+END;
+
+CREATE TRIGGER IF NOT EXISTS organo_au AFTER UPDATE OF nombre ON organo BEGIN
+  INSERT INTO organo_fts (organo_fts, rowid, nombre) VALUES ('delete', old.rid, old.nombre);
+  INSERT INTO organo_fts (rowid, nombre) VALUES (new.rid, new.nombre);
+END;
+
+CREATE TABLE IF NOT EXISTS catalogo (
+  tipo TEXT NOT NULL,
+  valor TEXT NOT NULL,
+  codigo TEXT,
+  descripcion TEXT,
+  n INTEGER NOT NULL,
+  PRIMARY KEY (tipo, valor)
+);
 
 CREATE TABLE IF NOT EXISTS meta (
   clave TEXT PRIMARY KEY,

@@ -50,6 +50,7 @@ load_d1() {
 }
 
 historico_year() {
+  set -euo pipefail
   local year="$1" db="licit_$1"
   export DATABASE_URL="postgresql://licit:licit@localhost:${PG_PORT}/$db"
   echo "[$year] start $(date +%T)"
@@ -90,7 +91,8 @@ export ROOT OUT PG PG_PORT BUCKET
 case "$MODE" in
   historico)
     printf '%s\n' "${YEARS[@]}" | xargs -P "$PARALLEL" -I{} \
-      bash -c 'historico_year {} > "$OUT/logs/{}.log" 2>&1 && echo "OK {}" || echo "FALLO {} (ver $OUT/logs/{}.log)"'
+      bash -c '( historico_year {} ) > "$OUT/logs/{}.log" 2>&1; rc=$?
+        if [ "$rc" = 0 ]; then echo "OK {}"; else echo "FALLO {} (ver $OUT/logs/{}.log)"; exit 1; fi'
     ;;
   estado)
     estado "${YEARS[@]}" 2>&1 | tee "$OUT/logs/estado.log"

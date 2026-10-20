@@ -106,6 +106,14 @@ jobs:
           uv run python -m export.parquet out/reciente
           aws s3 cp out/reciente "$BUCKET/parquet/reciente/" --recursive --only-show-errors
 
+      - name: Compact Parquet for the explorer
+        # todo = previous todo + today's window, so rows pruned from the
+        # Postgres window are never lost.
+        run: |
+          aws s3 cp "$BUCKET/parquet/todo/" out/todo-prev --recursive --only-show-errors
+          uv run python -m export.compact out/todo out/todo-prev out/reciente
+          aws s3 cp out/todo "$BUCKET/parquet/todo/" --recursive --only-show-errors
+
       - name: Sync D1
         run: |
           uv run python -m export.d1 build out/d1
