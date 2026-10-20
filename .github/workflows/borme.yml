@@ -94,9 +94,9 @@ jobs:
           [ -d "cache/$YEAR" ] || exit 0
           tar --zstd -cf cache.tar.zst -C cache "$YEAR"
           ls -lh cache.tar.zst
-          aws s3 cp cache.tar.zst "$BUCKET/cache/borme/$YEAR.tar.zst" --only-show-errors
+          scripts/reintentar.sh aws s3 cp cache.tar.zst "$BUCKET/cache/borme/$YEAR.tar.zst" --only-show-errors
 
       - name: Export raw
         run: |
           uv run python -m borme.raw cache out "$YEAR"
-          aws s3 sync "out/$YEAR" "$BUCKET/parquet/raw/borme/$YEAR/" --delete --only-show-errors
+          scripts/reintentar.sh aws s3 sync "out/$YEAR" "$BUCKET/parquet/raw/borme/$YEAR/" --delete --only-show-errors
