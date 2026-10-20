@@ -32,7 +32,7 @@ def test_document_metadata_and_filings(doc: Document) -> None:
     assert doc.id == "BORME-A-2026-200-28"
     assert doc.province == "MADRID"
     assert doc.date == date(2026, 10, 16)
-    assert [f.number for f in doc.filings] == [460001, 460002, 460003, 460004]
+    assert [f.number for f in doc.filings] == [460001, 460002, 460003, 460004, 460005]
     assert doc.filings[0].company == "OBRAS EJEMPLO DEL CENTRO SOCIEDAD LIMITADA"
 
 

@@ -21,12 +21,12 @@ def test_year_from_cache(tmp_path: Path) -> None:
 
     counts = year(tmp_path / "cache", tmp_path / "raw", 2026)
 
-    assert counts == {"filing": 4, "act": 12, "position": 13}
+    assert counts == {"filing": 5, "act": 13, "position": 14}
     out = tmp_path / "raw" / "2026"
     keys = duckdb.sql(
         f"SELECT count(*), count(DISTINCT (doc_id, number, n)) FROM '{out}/act.parquet'"
     ).fetchone()
-    assert keys == (12, 12)
+    assert keys == (13, 13)
     sheet = duckdb.sql(
         f"SELECT sheet FROM '{out}/filing.parquet' WHERE number = 460001"
     ).fetchone()

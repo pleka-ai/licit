@@ -5,6 +5,9 @@
 # `wrangler dev`. Run by the test workflow; locally needs DATABASE_URL pointing
 # at a rehearsal Postgres with schema/ applied (its ingested rows are emptied).
 #
+# The BORME fixtures (tests/borme/fixtures) go through borme.raw and into the
+# model; one of their companies is a winner in the PLACSP fixtures.
+#
 # Usage: scripts/ensayo-pipeline.sh <work_dir>
 set -euo pipefail
 
@@ -36,7 +39,7 @@ feed() {  # feed <dir> <feed_type> <year> <fixture>
   cp "$FIX/$4" "$1/$2/$3/$root"
 }
 
-rm -rf "$WORK"/{feeds-1,feeds-2,raw,modelo-1,modelo-2,d1-1,d1-2,d1-local}
+rm -rf "$WORK"/{feeds-1,feeds-2,raw,modelo-1,modelo-2,d1-1,d1-2,d1-local,borme-cache,borme-raw}
 py - <<'PY'
 import asyncio, os
 import asyncpg
@@ -52,6 +55,15 @@ async def main() -> None:
 asyncio.run(main())
 PY
 
+echo "== BORME: fixtures por el parser y el export raw"
+for xml in "$ROOT"/tests/borme/fixtures/BORME-A-*.xml; do
+  year=$(basename "$xml" | cut -d- -f3)
+  mkdir -p "$WORK/borme-cache/$year"
+  cp "$xml" "$WORK/borme-cache/$year/"
+done
+py -m borme.raw "$WORK/borme-cache" "$WORK/borme-raw"
+export BORME_RAW="$WORK/borme-raw"
+
 echo "== Día 1: dos expedientes por el CLI del parser"
 feed "$WORK/feeds-1" outsiders 2024 full_entry.xml
 feed "$WORK/feeds-1" insiders 2024 multi_lot_with_terms.xml
@@ -61,6 +73,7 @@ publish "$ROOT/scripts/modelo.sh" "$WORK/raw/todo-1" "$WORK/modelo-1" "$WORK/raw
 publish "$ROOT/scripts/d1-sql.sh" "$WORK/d1-1" "$WORK/modelo-1" "$WORK/sin-modelo-previo"
 (cd "$ROOT" && "$ROOT/scripts/d1-load.sh" "$WORK/d1-1")
 expect "licitaciones en D1 tras la carga completa" "$(d1_count 'SELECT count(*) n FROM licitacion_api')" 2
+expect "adjudicatarias con registro" "$(d1_count 'SELECT count(*) n FROM empresa_registro')" 1
 
 echo "== Día 2: un expediente nuevo, carga por diferencias"
 feed "$WORK/feeds-2" outsiders 2025 minimal_entry.xml
@@ -110,4 +123,7 @@ expect "licitaciones del órgano" "$(api "v1/organo/$organo" | jq '.stats.contra
 nif=$(buscar '{"limit": 5}' | jq -r '[.resultados[] | select(.adjudicatario_nif)][0].adjudicatario_nif')
 expect "contratos de la empresa" "$(api "v1/empresa/$nif" | jq '.stats.contratos > 0')" true
 expect "similares responde" "$(api "v1/similares/$id" | jq 'has("resultados")')" true
+registro=$(api "v1/empresa/B12345678")
+expect "registro de la empresa" "$(echo "$registro" | jq -r '.registro.sociedad')" "TECHCORP SOCIEDAD LIMITADA"
+expect "cargos vigentes" "$(echo "$registro" | jq -r '.registro.cargos_vigentes[0].nombre')" "SOLER VIDAL MARC"
 echo "Ensayo completo"
