@@ -1,13 +1,15 @@
-"""Merge several Parquet snapshots into one deduplicated set.
+"""Merge several raw Parquet exports into one deduplicated history.
 
-Each source directory holds ``licitacion/lote/adjudicacion/cpv/empresa``
-Parquet files exported by :mod:`export.parquet` (an archived year, the daily
-window, or a previous compaction). A licitacion seen in several sources keeps
-the newest snapshot's fields and children, the earliest ``fecha_publicacion``
-and the union of ``historial_estados`` — the same rules as the D1 upsert.
+Each source directory holds the tables written by :mod:`export.raw` (an
+archived year, the daily window, or a previous compaction). Sources are given
+oldest first; on ties the later one wins. Merge rules:
 
-Output is sorted by ``fecha_publicacion`` so readers (the in-browser explorer,
-the D1 rebuild) can prune row groups by date.
+* a folder keeps its newest snapshot (``updated``), and every child table keeps
+  the rows of that same snapshot, so a folder never mixes two versions;
+* ``status_change`` is the union of every observed status, which is how the
+  model recovers the first publication date and the status timeline;
+* ``contracting_party`` keeps the version stamped with the newest folder;
+* ``codice_code`` keeps each code's latest description.
 
 Usage::
 
@@ -23,179 +25,101 @@ from pathlib import Path
 
 import duckdb
 
-from export.columns import LICITACION_COLS
+from export.raw import RAW_TABLES
 from shared.logger import get_logger
 
 logger = get_logger(__name__)
 
-_CHILDREN = ("lote", "adjudicacion", "cpv")
-# Few, large row groups: the browser explorer fetches one HTTP range per
-# column chunk, so fewer groups means far fewer round trips.
-_COPY_OPTS = "FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 500000"
-_HISTORIAL_TYPE = '[{"fecha": "VARCHAR", "estado": "VARCHAR"}]'
-_TIMESTAMPTZ = ("fecha_publicacion", "fecha_actualizacion")
+_FOLDER = "contract_folder_status"
+_SPECIAL = (_FOLDER, "contracting_party", "status_change", "codice_code")
+FOLDER_CHILDREN: tuple[str, ...] = tuple(t for t in RAW_TABLES if t not in _SPECIAL)
 
-# Small pre-aggregated tables so the explorer's first queries are instant.
-_SUMMARIES = {
-    "resumen_mensual": """
-        SELECT date_trunc('month', fecha_publicacion)::DATE AS mes, tipo_contrato,
-               count(*) AS licitaciones,
-               round(sum(presupuesto_sin_iva)) AS importe_licitado
-        FROM licitacion GROUP BY ALL ORDER BY mes, tipo_contrato
-    """,
-    "resumen_organo": """
-        SELECT organo_id, arg_max(organo, fecha_actualizacion) AS organo,
-               arg_max(organo_nif, fecha_actualizacion) AS organo_nif,
-               count(*) AS licitaciones,
-               round(sum(presupuesto_sin_iva)) AS importe_licitado
-        FROM licitacion WHERE organo_id IS NOT NULL
-        GROUP BY organo_id ORDER BY licitaciones DESC
-    """,
-    "licitacion_abierta": """
-        SELECT id, fecha_publicacion::DATE AS fecha_publicacion, fecha_limite,
-               titulo, organo, tipo_contrato, estado, presupuesto_sin_iva,
-               cpv_principal, lugar_subentidad, url_place
-        FROM licitacion WHERE fecha_limite >= current_date
-        ORDER BY fecha_limite, presupuesto_sin_iva DESC
-    """,
-    "resumen_empresa": """
-        SELECT adjudicatario_nif, arg_max(adjudicatario, length(adjudicatario))
-                 AS adjudicatario,
-               count(*) AS contratos,
-               round(sum(importe_adjudicacion)) AS importe_adjudicado
-        FROM adjudicacion WHERE adjudicatario_nif IS NOT NULL
-        GROUP BY adjudicatario_nif ORDER BY contratos DESC
-    """,
-}
+_COPY_OPTS = "FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 250000"
 
 
-def _files(sources: list[Path], table: str) -> str:
-    paths = [
-        str(s / f"{table}.parquet")
-        for s in sources
+def _read(con: duckdb.DuckDBPyConnection, sources: list[Path], table: str) -> str:
+    """Register ``src_<table>``: every source's rows plus their ``_src`` rank."""
+    selects = [
+        f"SELECT *, {i} AS _src FROM read_parquet('{_quote(s / f'{table}.parquet')}')"
+        for i, s in enumerate(sources)
         if (s / f"{table}.parquet").exists()
     ]
-    if not paths:
+    if not selects:
         msg = f"No {table}.parquet in {sources}"
         raise FileNotFoundError(msg)
-    return "[" + ", ".join("'" + p.replace("'", "''") + "'" for p in paths) + "]"
+    view = f"src_{table}"
+    con.execute(f"CREATE TEMP VIEW {view} AS " + " UNION ALL BY NAME ".join(selects))
+    return view
+
+
+def _quote(path: Path) -> str:
+    return str(path).replace("'", "''")
 
 
 def compact(out_dir: Path, sources: list[Path]) -> dict[str, object]:
-    """Write the merged Parquet set to ``out_dir`` and return its manifest."""
+    """Write the merged raw set to ``out_dir`` and return its manifest."""
     out_dir.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect()
     con.execute("SET TimeZone = 'UTC'")
 
+    folders = _read(con, sources, _FOLDER)
     con.execute(
         f"""
-        CREATE TEMP TABLE src AS
-        SELECT *, parse_dirpath(filename) AS _src
-        FROM read_parquet({_files(sources, "licitacion")},
-                          union_by_name = true, filename = true)
+        CREATE TEMP TABLE winner AS
+        SELECT entry_id, arg_max(_src, (updated, _src)) AS _src
+        FROM {folders} GROUP BY entry_id
         """
     )
-    other_cols = ", ".join(
-        f"w.{c}"
-        for c in LICITACION_COLS
-        if c not in ("fecha_publicacion", "historial_estados")
-    )
-    con.execute(
-        f"""
-        CREATE TEMP TABLE licitacion AS
-        WITH ranked AS (
+
+    queries: dict[str, str] = {
+        _FOLDER: f"""
+            SELECT f.* EXCLUDE (_src) FROM {folders} f
+            JOIN winner w USING (entry_id, _src)
+            ORDER BY f.updated, f.entry_id
+        """
+    }
+    for table in FOLDER_CHILDREN:
+        view = _read(con, sources, table)
+        queries[table] = f"""
+            SELECT c.* EXCLUDE (_src) FROM {view} c
+            JOIN winner w USING (entry_id, _src)
+            ORDER BY c.entry_id
+        """
+    queries["status_change"] = f"""
+        SELECT DISTINCT entry_id, status_code, updated
+        FROM {_read(con, sources, "status_change")}
+        WHERE entry_id IN (SELECT entry_id FROM winner)
+        ORDER BY entry_id, updated
+    """
+    parties = _read(con, sources, "contracting_party")
+    queries["contracting_party"] = f"""
+        SELECT * EXCLUDE (_src, _rn) FROM (
           SELECT *, row_number() OVER (
-            PARTITION BY id ORDER BY fecha_actualizacion DESC, _src DESC) AS _rn
-          FROM src
-        ),
-        agg AS (
-          SELECT id,
-                 min(fecha_publicacion) AS fecha_publicacion,
-                 to_json(list_sort(list_distinct(flatten(list(
-                   from_json(historial_estados, '{_HISTORIAL_TYPE}'))))))::VARCHAR
-                   AS historial_estados
-          FROM src GROUP BY id
-        )
-        SELECT {other_cols}, agg.fecha_publicacion, agg.historial_estados, w._src
-        FROM ranked w JOIN agg USING (id)
-        WHERE w._rn = 1
-        """
-    )
+            PARTITION BY organo_ref ORDER BY updated DESC, _src DESC) AS _rn
+          FROM {parties})
+        WHERE _rn = 1 ORDER BY organo_ref
+    """
+    codes = _read(con, sources, "codice_code")
+    queries["codice_code"] = f"""
+        SELECT list, code, arg_max(description, _src) AS description
+        FROM {codes} GROUP BY list, code ORDER BY list, code
+    """
 
     tables: dict[str, dict[str, int | str]] = {}
-
-    def write(name: str, query: str) -> None:
+    for name, query in queries.items():
         path = out_dir / f"{name}.parquet"
-        con.execute(f"COPY ({query}) TO '{path}' ({_COPY_OPTS})")
-        rows = con.execute(f"SELECT count(*) FROM '{path}'").fetchone()
+        con.execute(f"COPY ({query}) TO '{_quote(path)}' ({_COPY_OPTS})")
+        row = con.execute(f"SELECT count(*) FROM '{_quote(path)}'").fetchone()
         tables[name] = {
             "file": path.name,
-            "rows": rows[0] if rows else 0,
+            "rows": row[0] if row else 0,
             "bytes": path.stat().st_size,
         }
-        logger.info("Compacted table=%s rows=%s", name, tables[name]["rows"])
+        logger.info("Compacted raw table=%s rows=%s", name, tables[name]["rows"])
 
-    # Timestamps are written as naive UTC: DuckDB-WASM ships without ICU and
-    # cannot cast TIMESTAMPTZ.
-    lic_cols = ", ".join(
-        f"{c}::TIMESTAMP AS {c}" if c in _TIMESTAMPTZ else c for c in LICITACION_COLS
-    )
-    write(
-        "licitacion",
-        f"SELECT {lic_cols} FROM licitacion ORDER BY fecha_publicacion, id",
-    )
-    for child in _CHILDREN:
-        write(
-            child,
-            f"""
-            SELECT c.* EXCLUDE (filename)
-            FROM read_parquet({_files(sources, child)},
-                              union_by_name = true, filename = true) c
-            JOIN licitacion w
-              ON w.id = c.licitacion_id AND w._src = parse_dirpath(c.filename)
-            ORDER BY w.fecha_publicacion, c.licitacion_id
-            """,
-        )
-    write(
-        "empresa",
-        f"""
-        SELECT nif, arg_max(nombre, length(nombre)) AS nombre,
-               any_value(ciudad) AS ciudad, any_value(tipo) AS tipo
-        FROM read_parquet({_files(sources, "empresa")}, union_by_name = true)
-        GROUP BY nif ORDER BY nif
-        """,
-    )
-
-    adj = out_dir / "adjudicacion.parquet"
-    con.execute(f"CREATE TEMP VIEW adjudicacion AS SELECT * FROM '{adj}'")
-    for name, query in _SUMMARIES.items():
-        write(name, query)
-
-    stats = con.execute(
-        """
-        SELECT count(*), count(DISTINCT organo_id), count(DISTINCT adjudicatario_nif),
-               coalesce(sum(presupuesto_sin_iva), 0)::DOUBLE,
-               min(fecha_publicacion)::VARCHAR, max(fecha_actualizacion)::VARCHAR
-        FROM licitacion
-        """
-    ).fetchone()
     manifest: dict[str, object] = {
         "generado": datetime.now(UTC).isoformat(),
         "tablas": tables,
-        "stats": dict(
-            zip(
-                (
-                    "total_licitaciones",
-                    "total_organos",
-                    "total_empresas",
-                    "importe_total",
-                    "desde",
-                    "ultima_actualizacion",
-                ),
-                stats or (),
-                strict=False,
-            )
-        ),
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False))
     return manifest
@@ -205,8 +129,7 @@ def main(argv: list[str] | None = None) -> None:
     args = argv if argv is not None else sys.argv[1:]
     match args:
         case [out_dir, *sources] if sources:
-            manifest = compact(Path(out_dir), [Path(s) for s in sources])
-            logger.info("Manifest: %s", manifest["stats"])
+            compact(Path(out_dir), [Path(s) for s in sources])
         case _:
             sys.exit("usage: export.compact <out_dir> <src_dir> [<src_dir>...]")
 

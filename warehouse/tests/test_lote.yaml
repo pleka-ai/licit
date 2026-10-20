@@ -1,0 +1,31 @@
+test_lote_objeto_unico_sin_lotes:
+  model: modelo.lote
+  description: A folder with lots yields one row per lot (lot CPV first); a folder without lots yields a single 'objeto único' row with the folder budget.
+  inputs:
+    modelo.organo: {rows: [{organo_key: 0}]}
+    modelo.modalidad: {rows: [{modalidad_key: 0}]}
+    modelo.estado: {rows: [{estado_key: 0}]}
+    modelo.cpv: {rows: [{cpv_key: 0}]}
+    modelo.lugar: {rows: [{lugar_key: 0}]}
+    stage.expediente_claves:
+      rows:
+        - {licitacion_key: 1, fecha_publicacion: '2025-01-10 08:00:00+00', organo_key: 7, modalidad_key: 8, estado_key: 9, cpv_key: 10, lugar_key: 11}
+        - {licitacion_key: 2, fecha_publicacion: '2025-02-01 08:00:00+00', organo_key: 7, modalidad_key: 8, estado_key: 9, cpv_key: 10, lugar_key: 11}
+    stage.contract_folder_status:
+      rows:
+        - {licitacion_key: 1, entry_id: e1, name: Con lotes, tax_exclusive_amount: 1000.0}
+        - {licitacion_key: 2, entry_id: e2, name: Sin lotes, tax_exclusive_amount: 50.0, total_amount: 60.5}
+    stage.procurement_project_lot:
+      rows:
+        - {licitacion_key: 1, entry_id: e1, lot_number: '1', name: Lote A, tax_exclusive_amount: 400.0}
+        - {licitacion_key: 1, entry_id: e1, lot_number: '2', name: Lote B, tax_exclusive_amount: 600.0}
+    stage.cpv_classification:
+      rows:
+        - {licitacion_key: 99, entry_id: otro, n: 1, lot_number: '1', cpv_code: '30200000'}
+  outputs:
+    query:
+      partial: true
+      rows:
+        - {licitacion_key: 1, lote_numero: '1', es_objeto_unico: false, titulo: Lote A, presupuesto_sin_iva: 400.0, cpv_key: 10, fecha_publicacion: '2025-01-10'}
+        - {licitacion_key: 1, lote_numero: '2', es_objeto_unico: false, titulo: Lote B, presupuesto_sin_iva: 600.0, cpv_key: 10, fecha_publicacion: '2025-01-10'}
+        - {licitacion_key: 2, lote_numero: '0', es_objeto_unico: true, titulo: Sin lotes, presupuesto_sin_iva: 50.0, cpv_key: 10, fecha_publicacion: '2025-02-01'}
