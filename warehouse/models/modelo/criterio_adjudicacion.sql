@@ -1,31 +1,25 @@
 MODEL (
   name modelo.criterio_adjudicacion,
   kind FULL,
-  tags (hecho),
-  depends_on (modelo.tipo_criterio, modelo.organo),
-  grain (licitacion_key, criterio_n),
-  description 'Criterios de adjudicación con su ponderación, del expediente (lote_numero NULL) o de un lote.',
+  tags (dimension),
+  grain criterio_key,
+  description 'Criterio de adjudicación de una licitación (lote_numero NULL) o de un lote: tipo (automático o juicio de valor), subtipo (precio, calidad…), descripción y ponderación.',
   audits (
-    not_null(columns := (licitacion_key, criterio_n, tipo_criterio_key, organo_key)),
-    unique_combination_of_columns(columns := (licitacion_key, criterio_n)),
-    clave_existe(columna := tipo_criterio_key, dimension := modelo.tipo_criterio)
+    not_null(columns := (criterio_key, licitacion_key)),
+    unique_values(columns := (criterio_key))
   )
 );
 
 SELECT
+  @clave('criterio', c.licitacion_key, c.n) AS criterio_key,
   c.licitacion_key,
   c.n AS criterio_n,
   c.lot_number AS lote_numero,
-  @clave_o(
-    'tipo_criterio',
-    coalesce(c.criteria_type_code, '∅'),
-    coalesce(c.criteria_sub_type_code, '∅')
-  ) AS tipo_criterio_key,
-  e.organo_key,
-  e.modalidad_key,
-  e.fecha_publicacion::DATE AS fecha_publicacion,
+  c.criteria_type_code AS tipo_codigo,
+  @etiqueta('awarding_criteria_type', c.criteria_type_code) AS tipo,
+  c.criteria_sub_type_code AS subtipo_codigo,
+  @etiqueta('awarding_criteria_sub_type', c.criteria_sub_type_code) AS subtipo,
   c.description AS descripcion,
   c.note AS nota,
   c.weight_numeric AS ponderacion
 FROM stage.awarding_criteria AS c
-JOIN stage.expediente_claves AS e USING (licitacion_key)

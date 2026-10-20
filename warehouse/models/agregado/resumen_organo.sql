@@ -16,7 +16,7 @@ SELECT
   round(sum(l.presupuesto_sin_iva)) AS importe_licitado,
   round(sum(l.importe_adjudicado_sin_iva)) AS importe_adjudicado,
   max(l.fecha_publicacion)::DATE AS ultima_publicacion
-FROM modelo.licitacion AS l
+FROM modelo.ciclo_licitacion AS l
 JOIN modelo.organo AS o USING (organo_key)
 WHERE l.organo_key > 0
 GROUP BY ALL

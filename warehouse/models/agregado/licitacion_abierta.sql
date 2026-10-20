@@ -7,24 +7,24 @@ MODEL (
 );
 
 SELECT
-  l.licitacion_key,
+  c.licitacion_key,
   l.id,
-  l.fecha_publicacion::DATE AS fecha_publicacion,
-  l.fecha_limite,
+  c.fecha_publicacion::DATE AS fecha_publicacion,
+  c.fecha_limite,
   l.titulo,
   o.nombre AS organo,
-  m.tipo_contrato,
-  e.descripcion AS estado,
-  l.presupuesto_sin_iva,
-  c.codigo AS cpv,
-  c.descripcion AS cpv_descripcion,
+  l.tipo_contrato,
+  l.procedimiento,
+  l.estado,
+  c.presupuesto_sin_iva,
+  p.codigo AS cpv,
+  p.descripcion AS cpv_descripcion,
   g.nombre_placsp AS lugar,
   l.url_place
-FROM modelo.licitacion AS l
+FROM modelo.ciclo_licitacion AS c
+JOIN modelo.licitacion AS l USING (licitacion_key)
 JOIN modelo.organo AS o USING (organo_key)
-JOIN modelo.modalidad AS m USING (modalidad_key)
-JOIN modelo.estado AS e USING (estado_key)
-JOIN modelo.cpv AS c USING (cpv_key)
+JOIN modelo.cpv AS p USING (cpv_key)
 JOIN modelo.lugar AS g USING (lugar_key)
-WHERE l.fecha_limite >= current_date
-ORDER BY l.fecha_limite, l.presupuesto_sin_iva DESC
+WHERE c.fecha_limite >= current_date
+ORDER BY c.fecha_limite, c.presupuesto_sin_iva DESC

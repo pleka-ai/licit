@@ -2,12 +2,14 @@ MODEL (
   name modelo.modificacion,
   kind FULL,
   tags (hecho),
-  depends_on (modelo.organo),
+  depends_on (modelo.licitacion, modelo.organo, modelo.cpv, modelo.lugar),
   grain (licitacion_key, modificacion_n),
   description 'Hecho transaccional: cada modificación de contrato, con su efecto en importe y plazo.',
   audits (
-    not_null(columns := (licitacion_key, modificacion_n, organo_key)),
-    unique_combination_of_columns(columns := (licitacion_key, modificacion_n))
+    not_null(columns := (licitacion_key, modificacion_n, organo_key, cpv_key, lugar_key)),
+    unique_combination_of_columns(columns := (licitacion_key, modificacion_n)),
+    clave_existe(columna := licitacion_key, dimension := modelo.licitacion),
+    clave_existe(columna := organo_key, dimension := modelo.organo)
   )
 );
 
@@ -15,7 +17,8 @@ SELECT
   m.licitacion_key,
   m.n AS modificacion_n,
   e.organo_key,
-  e.modalidad_key,
+  e.cpv_key,
+  e.lugar_key,
   e.fecha_publicacion::DATE AS fecha_publicacion,
   m.modification_number AS numero,
   m.contract_id AS contrato_id,

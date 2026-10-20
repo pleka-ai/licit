@@ -1,28 +1,32 @@
 MODEL (
   name modelo.documento,
   kind FULL,
-  tags (hecho),
-  depends_on (modelo.tipo_documento, modelo.organo),
-  grain (licitacion_key, documento_n),
-  description 'Hecho sin medidas: cada documento publicado del expediente (pliegos, documentación adicional, anuncios en PDF).',
+  tags (dimension),
+  grain documento_key,
+  description 'Documento de una licitación: pliegos de cláusulas administrativas y de prescripciones técnicas, documentación adicional y anuncios publicados, con su enlace.',
   audits (
-    not_null(columns := (licitacion_key, documento_n, tipo_documento_key, organo_key)),
-    unique_combination_of_columns(columns := (licitacion_key, documento_n)),
-    clave_existe(columna := tipo_documento_key, dimension := modelo.tipo_documento)
+    not_null(columns := (documento_key, licitacion_key)),
+    unique_values(columns := (documento_key))
   )
 );
 
 SELECT
+  @clave('documento', d.licitacion_key, d.n) AS documento_key,
   d.licitacion_key,
   d.n AS documento_n,
   d.notice_n AS anuncio_n,
-  @clave_o(
-    'tipo_documento', coalesce(d.source_type, '∅'), coalesce(d.document_type_code, '∅')
-  ) AS tipo_documento_key,
-  e.organo_key,
-  e.fecha_publicacion::DATE AS fecha_publicacion,
+  d.source_type AS origen_codigo,
+  CASE d.source_type
+    WHEN 'LEGAL' THEN 'Pliego de cláusulas administrativas'
+    WHEN 'TECHNICAL' THEN 'Pliego de prescripciones técnicas'
+    WHEN 'ADDITIONAL' THEN 'Documentación adicional'
+    WHEN 'GENERAL' THEN 'Documento general'
+    WHEN 'PUBLICATION' THEN 'Anuncio publicado'
+    ELSE d.source_type
+  END AS origen,
+  d.document_type_code AS tipo_codigo,
+  @etiqueta('document_type', d.document_type_code) AS tipo,
   d.filename AS nombre,
   d.uri AS url,
   d.document_hash AS huella
 FROM stage.document_reference AS d
-JOIN stage.expediente_claves AS e USING (licitacion_key)

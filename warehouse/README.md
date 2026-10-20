@@ -17,26 +17,39 @@ uv run sqlmesh -p warehouse test
 PYTHONPATH=src uv run python -m export.modelo out/modelo out/raw   # construir y publicar Parquet
 ```
 
-## Matriz de bus
+## Entidades y hechos
 
-Filas: procesos (hechos). Columnas: dimensiones conformadas que comparten.
+Las **dimensiones** son las entidades por las que alguien pregunta a una API de
+licitaciones: la licitación y sus lotes, quién contrata y quién gana, qué se
+compra y dónde, y los documentos y condiciones de cada licitación.
 
-| Hecho | Grano | calendario | organo | empresa | cpv | lugar | modalidad | estado | otras |
-|---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|---|
-| `licitacion` | expediente (snapshot acumulativo) | ● (13 hitos) | ● | ● adjudicatario principal | ● principal | ● | ● | ● actual | `resultado` principal |
-| `lote` | lote; un "objeto único" si no hay lotes | ● | ● | | ● | ● | ● | ● | |
-| `adjudicacion` | resultado × adjudicatario | ● (adjudicación, formalización, inicio) | ● | ● | ● | ● | ● | | `resultado` |
-| `cambio_estado` | expediente × estado observado | ● | ● | | | | | ● | |
-| `modificacion` | modificación de contrato | ● | ● | | | | ● | | |
-| `anuncio` | anuncio × medio de publicación | ● | ● | | | | | | `tipo_anuncio` |
-| `documento` | documento | ● | ● | | | | | | `tipo_documento` |
-| `criterio_adjudicacion` | criterio | ● | ● | | | | ● | | `tipo_criterio` |
-| `requisito` | requisito de participación | ● | ● | | | | | | `tipo_requisito` |
-| `garantia` | garantía | ● | ● | | | | | | `tipo_garantia` |
-| `condicion_ejecucion` | condición especial | ● | ● | | | | | | `tipo_condicion` |
-| `clasificacion_exigida` | clasificación exigida | ● | ● | | | | | | |
-| `lugar_ejecucion` | lote × ubicación | | ● | | | ● | | | |
-| `cpv_licitacion` | puente expediente × CPV | | | | ● | | | | |
+| Dimensión | Una fila por |
+|---|---|
+| `licitacion` | licitación (expediente): título, enlaces, estado actual, tipo, procedimiento, tramitación, financiación, duración y condiciones del pliego |
+| `lote` | lote; las licitaciones sin lotes tienen un lote "0" (objeto único) |
+| `organo` | órgano de contratación, con su jerarquía administrativa |
+| `empresa` | adjudicataria (por NIF) |
+| `cpv` | código CPV, con división, grupo, clase y categoría |
+| `lugar` | territorio NUTS, con país, comunidad y provincia |
+| `documento` | pliego, anexo o anuncio publicado |
+| `criterio_adjudicacion`, `requisito`, `garantia`, `condicion_ejecucion`, `clasificacion_exigida`, `lugar_ejecucion` | término del pliego de una licitación o lote |
+| `estado`, `resultado`, `calendario` | estado del ciclo, resultado de adjudicación, día |
+
+Los **hechos** son los procesos que se miden. Cada uno lleva las claves de
+todas las dimensiones que le aplican, aunque sean deducibles de la licitación:
+la redundancia es a propósito, para que cada hecho se consulte sin rodeos.
+
+| Hecho | Grano | licitacion | lote | organo | empresa | cpv | lugar | estado | resultado | fechas |
+|---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|---|
+| `ciclo_licitacion` | licitación (snapshot acumulativo) | ● | | ● | ● principal | ● principal | ● | ● actual | ● principal | 13 hitos |
+| `presupuesto_lote` | lote | ● | ● | ● | | ● | ● | ● | | publicación, límite |
+| `adjudicacion` | resultado × adjudicatario | ● | ● | ● | ● | ● | ● | | ● | adjudicación, formalización, inicio |
+| `cambio_estado` | estado observado | ● | | ● | | ● | ● | ● | | momento |
+| `modificacion` | modificación de contrato | ● | | ● | | ● | ● | | | publicación |
+| `anuncio` | anuncio × medio | ● | | ● | | ● | ● | | | anuncio, publicación |
+
+`cpv_licitacion` es la tabla puente entre `licitacion` y `cpv` (todos los CPV de
+la licitación y de sus lotes, con `es_principal` y `peso`).
 
 ## Convenciones
 
@@ -55,17 +68,16 @@ Filas: procesos (hechos). Columnas: dimensiones conformadas que comparten.
   API, así que los enlaces existentes siguen funcionando.
 - **SCD tipo 1.** `organo` y `empresa` guardan los atributos de su aparición
   más reciente; el histórico de cambios de estado vive en `cambio_estado`.
-- **Dimensiones basura.** `modalidad` agrupa los códigos y flags de bajo
-  cardinal del procedimiento (tipo, subtipo, procedimiento, tramitación,
-  sistema, presentación, regulación armonizada, financiación UE, plataforma),
-  solo con las combinaciones observadas.
+- **Dimensiones aplanadas.** Los códigos CODICE se resuelven a etiquetas dentro
+  de cada dimensión (p. ej. `licitacion.tipo_contrato_codigo` y
+  `licitacion.tipo_contrato`), sin tablas de códigos aparte.
 - **Medidas aditivas.** En `adjudicacion`, si un resultado tiene varios
   adjudicatarios, importes y presupuesto se reparten con `peso`. En
   `cpv_licitacion`, `peso` reparte 1 entre los CPV del expediente.
-- **Cabecera/línea.** Los hechos hijos llevan `licitacion_key` (dimensión
-  degenerada para cruzar con `licitacion`) y las dimensiones de la cabecera
-  (`organo_key`, `fecha_publicacion`…), resueltas una sola vez en
-  `stage.expediente_claves`.
+- **Claves compartidas.** Las claves de cada licitación (`organo_key`,
+  `cpv_key`, `lugar_key`, `fecha_publicacion`…) se resuelven una sola vez en
+  `stage.expediente_claves` y todos los hechos las copian. Los roles
+  (`adjudicatario_key` → `empresa`) se validan con el audit `rol_existe`.
 
 ## Notas de la fuente
 
