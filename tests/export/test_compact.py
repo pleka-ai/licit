@@ -14,6 +14,7 @@ _TYPES = {
     "fecha_actualizacion": "TIMESTAMPTZ",
     "fecha_publicacion": "TIMESTAMPTZ",
     "presupuesto_sin_iva": "DOUBLE",
+    "fecha_limite": "DATE",
 }
 
 
