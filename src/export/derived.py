@@ -1,16 +1,15 @@
-"""Build the API's derived D1 tables from the compacted Parquet.
+"""Build the API's derived D1 rows (catalogs and /salud stats) from the model.
 
-Aggregating 1.6M rows inside D1 hits its per-query time limit, so empresa,
-organo, catalogo and the /salud stats are computed here with DuckDB and
-shipped as SQL. Upserts only rewrite rows whose values changed, so the daily
-run writes few rows.
+Aggregating the whole model inside D1 hits its per-query time limit, so the
+filter catalogs and the headline stats are computed here with DuckDB over the
+model's Parquet (:mod:`export.modelo`) and shipped as SQL.
 
 Usage::
 
-    PYTHONPATH=src uv run python -m export.derived <out_dir> <licitacion.parquet>
+    PYTHONPATH=src uv run python -m export.derived <out_dir> <modelo_dir>
 
 Writes ``d1-9001.sql`` … so ``scripts/d1-load.sh <out_dir>`` applies them after
-any licitacion chunks in the same directory.
+the table chunks written by :mod:`export.d1` in the same directory.
 """
 
 from __future__ import annotations
@@ -18,7 +17,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
 import duckdb
 
@@ -30,28 +28,28 @@ logger = get_logger(__name__)
 
 _FIRST_FILE = 9001
 
-_EMPRESA = """
-SELECT adjudicatario_nif AS nif,
-       arg_max(adjudicatario, fecha_actualizacion) AS nombre,
-       count(*) AS contratos
-FROM lic WHERE adjudicatario_nif IS NOT NULL GROUP BY 1 ORDER BY 1
-"""
-_ORGANO = """
-SELECT organo_id AS id,
-       arg_max(organo, fecha_actualizacion) AS nombre,
-       arg_max(organo_nif, fecha_actualizacion) AS nif,
-       count(*) AS licitaciones
-FROM lic WHERE organo_id IS NOT NULL GROUP BY 1 ORDER BY 1
+# Joined once: every licitacion with its dimension labels.
+_LIC = """
+CREATE TEMP VIEW lic AS
+SELECT l.*, m.tipo_contrato, m.tipo_contrato_codigo, m.procedimiento,
+       m.procedimiento_codigo, m.tramitacion, e.codigo AS estado_codigo,
+       e.descripcion AS estado, o.tipo AS organo_tipo, c.codigo AS cpv,
+       c.descripcion AS cpv_descripcion
+FROM licitacion l
+JOIN modalidad m USING (modalidad_key)
+JOIN estado e USING (estado_key)
+JOIN organo o USING (organo_key)
+JOIN cpv c USING (cpv_key)
 """
 _CATALOGO = """
-SELECT 'tipo_contrato' AS tipo, tipo_contrato AS valor, max(type_code) AS codigo,
-       NULL AS descripcion, count(*) AS n
+SELECT 'tipo_contrato' AS tipo, tipo_contrato AS valor,
+       max(tipo_contrato_codigo) AS codigo, NULL AS descripcion, count(*) AS n
 FROM lic WHERE tipo_contrato IS NOT NULL GROUP BY 2
 UNION ALL
-SELECT 'estado', estado, max(status_code), NULL, count(*)
-FROM lic WHERE estado IS NOT NULL GROUP BY 2
+SELECT 'estado', estado, max(estado_codigo), NULL, count(*)
+FROM lic WHERE estado_key > 0 GROUP BY 2
 UNION ALL
-SELECT 'procedimiento', procedimiento, max(procedure_code), NULL, count(*)
+SELECT 'procedimiento', procedimiento, max(procedimiento_codigo), NULL, count(*)
 FROM lic WHERE procedimiento IS NOT NULL GROUP BY 2
 UNION ALL
 SELECT 'tramitacion', tramitacion, NULL, NULL, count(*)
@@ -60,67 +58,37 @@ UNION ALL
 SELECT 'organo_tipo', organo_tipo, NULL, NULL, count(*)
 FROM lic WHERE organo_tipo IS NOT NULL GROUP BY 2
 UNION ALL
-SELECT 'cpv', cpv_principal, cpv_principal, max(cpv_principal_desc), count(*)
-FROM lic WHERE cpv_principal IS NOT NULL GROUP BY 2
+SELECT 'cpv', cpv, cpv, max(cpv_descripcion), count(*)
+FROM lic WHERE cpv_key > 0 GROUP BY 2
 """
 _STATS = """
 SELECT count(*) AS total_licitaciones,
-       count(DISTINCT organo_id) AS total_organos,
-       count(DISTINCT adjudicatario_nif) AS total_empresas,
+       count(DISTINCT organo_key) FILTER (WHERE organo_key > 0) AS total_organos,
+       (SELECT count(*) FROM resumen_empresa) AS total_empresas,
        round(coalesce(sum(presupuesto_sin_iva), 0))::BIGINT AS importe_total,
        strftime(min(fecha_publicacion), '%Y-%m-%dT%H:%M:%S+00:00') AS desde,
        strftime(max(fecha_actualizacion), '%Y-%m-%dT%H:%M:%S+00:00')
          AS ultima_actualizacion
-FROM lic
+FROM licitacion
 """
 
 
-def _upserts(
-    table: str,
-    key: str,
-    cols: list[str],
-    rows: list[tuple[Any, ...]],
-    rows_per_stmt: int,
-) -> list[str]:
-    """Multi-row upserts that skip rows whose values did not change."""
-    sets = ", ".join(f"{c} = excluded.{c}" for c in cols if c != key)
-    changed = " OR ".join(f"{table}.{c} IS NOT excluded.{c}" for c in cols if c != key)
-    out = []
-    for i in range(0, len(rows), rows_per_stmt):
-        values = ",\n".join(
-            "(" + ", ".join(sql_literal(v) for v in r) + ")"
-            for r in rows[i : i + rows_per_stmt]
-        )
-        out.append(
-            f"INSERT INTO {table} ({', '.join(cols)}) VALUES\n{values}\n"
-            f"ON CONFLICT({key}) DO UPDATE SET {sets} WHERE {changed};"
-        )
-    return out
-
-
-def build(out_dir: Path, parquet: Path, settings: Settings) -> None:
-    """Write the derived-table SQL files into ``out_dir``."""
+def build(out_dir: Path, modelo_dir: Path, settings: Settings) -> None:
+    """Write the derived-row SQL files into ``out_dir``."""
     out_dir.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect()
     con.execute("SET TimeZone = 'UTC'")
-    path = str(parquet).replace("'", "''")
-    con.execute(f"CREATE TEMP VIEW lic AS SELECT * FROM read_parquet('{path}')")
+    for path in sorted(modelo_dir.glob("*.parquet")):
+        quoted = str(path).replace("'", "''")
+        con.execute(
+            f"CREATE VIEW {path.stem} AS SELECT * FROM read_parquet('{quoted}')"
+        )
+    con.execute(_LIC)
 
     per_stmt = settings.d1_rows_per_insert * 5
-    files: list[list[str]] = []
-    empresa = con.execute(_EMPRESA).fetchall()
-    files.append(
-        _upserts("empresa", "nif", ["nif", "nombre", "contratos"], empresa, per_stmt)
-    )
-    organo = con.execute(_ORGANO).fetchall()
-    files.append(
-        _upserts(
-            "organo", "id", ["id", "nombre", "nif", "licitaciones"], organo, per_stmt
-        )
-    )
     catalogo = con.execute(_CATALOGO).fetchall()
     cat_cols = "tipo, valor, codigo, descripcion, n"
-    files.append(
+    files: list[list[str]] = [
         ["DELETE FROM catalogo;"]
         + [
             f"INSERT INTO catalogo ({cat_cols}) VALUES\n"
@@ -131,7 +99,7 @@ def build(out_dir: Path, parquet: Path, settings: Settings) -> None:
             + ";"
             for i in range(0, len(catalogo), per_stmt)
         ]
-    )
+    ]
     cur = con.execute(_STATS)
     names = [d[0] for d in cur.description or []]
     stats = dict(zip(names, cur.fetchone() or (), strict=True))
@@ -145,22 +113,16 @@ def build(out_dir: Path, parquet: Path, settings: Settings) -> None:
 
     for n, statements in enumerate(files, start=_FIRST_FILE):
         (out_dir / f"d1-{n}.sql").write_text("\n".join(statements) + "\n")
-    logger.info(
-        "Derived empresa=%d organo=%d catalogo=%d stats=%s",
-        len(empresa),
-        len(organo),
-        len(catalogo),
-        stats,
-    )
+    logger.info("Derived catalogo=%d stats=%s", len(catalogo), stats)
 
 
 def main(argv: list[str] | None = None) -> None:
     args = argv if argv is not None else sys.argv[1:]
     match args:
-        case [out_dir, parquet]:
-            build(Path(out_dir), Path(parquet), Settings())
+        case [out_dir, modelo_dir]:
+            build(Path(out_dir), Path(modelo_dir), Settings())
         case _:
-            sys.exit("usage: export.derived <out_dir> <licitacion.parquet>")
+            sys.exit("usage: export.derived <out_dir> <modelo_dir>")
 
 
 if __name__ == "__main__":
