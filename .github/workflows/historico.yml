@@ -88,7 +88,7 @@ jobs:
       YEAR: ${{ matrix.year }}
       DATABASE_URL: postgresql://licit:licit@localhost:5432/licit
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check the published version
         id: check
@@ -103,7 +103,7 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v10
         if: steps.check.outputs.skip != 'true'
         with:
           enable-cache: true
@@ -149,9 +149,9 @@ jobs:
       group: etl
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock

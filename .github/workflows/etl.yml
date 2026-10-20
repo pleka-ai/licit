@@ -66,7 +66,7 @@ jobs:
       BUCKET: ${{ vars.R2_BUCKET || 's3://licit-data' }}
       D1_DATABASE: ${{ vars.D1_DATABASE || 'licit-api' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Validate inputs
         run: |
@@ -74,7 +74,7 @@ jobs:
             echo "semilla requiere anios"; exit 1
           fi
 
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
