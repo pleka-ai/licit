@@ -41,7 +41,7 @@ SELECT
   coalesce(sum(presupuesto_sin_iva), 0)::DOUBLE AS importe_total,
   min(fecha_publicacion)::VARCHAR AS desde,
   max(fecha_actualizacion)::VARCHAR AS ultima_actualizacion
-FROM modelo.licitacion
+FROM modelo.ciclo_licitacion
 """
 
 

@@ -19,21 +19,6 @@ CREATE TABLE IF NOT EXISTS resultado (
   descripcion TEXT
 );
 
-CREATE TABLE IF NOT EXISTS modalidad (
-  modalidad_key INTEGER PRIMARY KEY,
-  tipo_contrato_codigo TEXT,
-  tipo_contrato TEXT,
-  procedimiento_codigo TEXT,
-  procedimiento TEXT,
-  tramitacion TEXT,
-  sistema_contratacion TEXT,
-  financiacion_codigo TEXT,
-  financiacion TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_modalidad_tipo ON modalidad (tipo_contrato_codigo);
-CREATE INDEX IF NOT EXISTS idx_modalidad_procedimiento ON modalidad (procedimiento_codigo);
-
 CREATE TABLE IF NOT EXISTS cpv (
   cpv_key INTEGER PRIMARY KEY,
   codigo TEXT NOT NULL,
@@ -113,7 +98,8 @@ END;
 
 -- --------------------------------------------------------------------- facts
 
--- Accumulating snapshot, one row per expediente. rid follows load order, which
+-- The licitacion entity joined to its ciclo_licitacion fact: one row per
+-- licitación, as the API serves it. rid follows load order, which
 -- is chronological (full loads are sorted by fecha_publicacion and new rows
 -- are appended), so "newest first" is a reverse rowid scan. Single-column
 -- indexes end in rowid, so equality filters also come out newest-first.
@@ -125,16 +111,21 @@ CREATE TABLE IF NOT EXISTS licitacion (
   titulo TEXT,
   url_place TEXT,
   organo_key INTEGER NOT NULL,
-  modalidad_key INTEGER NOT NULL,
   estado_key INTEGER NOT NULL,
   cpv_key INTEGER NOT NULL,
   lugar_key INTEGER NOT NULL,
   adjudicatario_key INTEGER NOT NULL,
   resultado_key INTEGER NOT NULL,
-  -- Copied from modalidad: the API's two most used filters stay single-index
-  -- equality lookups that come out in rowid order (no sort).
+  -- Attributes of the licitacion dimension; the two codes are the API's most
+  -- used filters, single-index equality lookups in rowid order (no sort).
   tipo_contrato_codigo TEXT,
+  tipo_contrato TEXT,
   procedimiento_codigo TEXT,
+  procedimiento TEXT,
+  tramitacion TEXT,
+  sistema_contratacion TEXT,
+  financiacion_codigo TEXT,
+  financiacion TEXT,
   fecha_publicacion TEXT,
   fecha_actualizacion TEXT,
   fecha_limite TEXT,
@@ -212,7 +203,7 @@ CREATE TABLE IF NOT EXISTS adjudicacion (
 
 CREATE INDEX IF NOT EXISTS idx_adj_empresa ON adjudicacion (empresa_key);
 
--- Status timeline of each expediente.
+-- Status timeline of each licitación.
 CREATE TABLE IF NOT EXISTS cambio_estado (
   licitacion_key INTEGER NOT NULL,
   momento TEXT NOT NULL,
@@ -230,7 +221,6 @@ SELECT
   l.rid,
   l.licitacion_key,
   l.organo_key,
-  l.modalidad_key,
   l.estado_key,
   l.cpv_key,
   l.lugar_key,
@@ -245,10 +235,10 @@ SELECT
   l.tipo_contrato_codigo AS type_code,
   l.procedimiento_codigo AS procedure_code,
   e.descripcion AS estado,
-  m.tipo_contrato,
-  m.procedimiento,
-  m.tramitacion,
-  m.sistema_contratacion,
+  l.tipo_contrato,
+  l.procedimiento,
+  l.tramitacion,
+  l.sistema_contratacion,
   l.presupuesto_sin_iva,
   l.presupuesto_con_iva,
   l.valor_estimado,
@@ -258,8 +248,8 @@ SELECT
   l.duracion_unidad,
   g.nombre AS lugar_nuts,
   g.nombre_placsp AS lugar_subentidad,
-  m.financiacion_codigo AS funding_program_code,
-  m.financiacion AS programa_financiacion,
+  l.financiacion_codigo AS funding_program_code,
+  l.financiacion AS programa_financiacion,
   l.tasa_subcontratacion_maxima AS tasa_subcontratacion,
   o.id AS organo_id,
   o.nombre AS organo,
@@ -278,7 +268,6 @@ SELECT
   l.num_documentos > 0 AS tiene_documentos
 FROM licitacion l
 LEFT JOIN organo o ON o.organo_key = l.organo_key
-LEFT JOIN modalidad m ON m.modalidad_key = l.modalidad_key
 LEFT JOIN estado e ON e.estado_key = l.estado_key
 LEFT JOIN cpv c ON c.cpv_key = l.cpv_key
 LEFT JOIN lugar g ON g.lugar_key = l.lugar_key

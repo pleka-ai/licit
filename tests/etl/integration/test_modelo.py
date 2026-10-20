@@ -42,11 +42,21 @@ async def test_model_builds_from_raw(tmp_path: Path) -> None:
 
     tablas = manifest["tablas"]
     assert isinstance(tablas, dict)
-    for table in ("licitacion", "adjudicacion", "lote", "organo", "empresa", "cpv"):
+    for table in (
+        "licitacion",
+        "ciclo_licitacion",
+        "presupuesto_lote",
+        "adjudicacion",
+        "lote",
+        "organo",
+        "empresa",
+        "cpv",
+        "documento",
+    ):
         assert (tmp_path / "modelo" / f"{table}.parquet").exists(), table
     # The manifest documents each table for the explorer.
-    assert tablas["licitacion"]["tipo"] == "hecho"
-    assert tablas["organo"]["tipo"] == "dimension"
+    assert tablas["licitacion"]["tipo"] == "dimension"
+    assert tablas["ciclo_licitacion"]["tipo"] == "hecho"
     assert ["licitacion_key", "BIGINT"] in tablas["licitacion"]["columnas"]
 
     out = str(tmp_path / "modelo") + "/"
@@ -62,10 +72,10 @@ async def test_model_builds_from_raw(tmp_path: Path) -> None:
         )
         assert public_id == expected.fetchone()[0]  # type: ignore[index]
 
-    # Every licitacion has at least one lot row (real lots or the whole object).
+    # Every licitacion has at least one budget row (real lots or the whole object).
     missing = con.execute(
         f"SELECT count(*) FROM '{out}licitacion.parquet' l WHERE NOT EXISTS ("
-        f" SELECT 1 FROM '{out}lote.parquet' o"
+        f" SELECT 1 FROM '{out}presupuesto_lote.parquet' o"
         " WHERE o.licitacion_key = l.licitacion_key)"
     ).fetchone()
     assert missing == (0,)

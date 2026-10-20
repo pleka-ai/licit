@@ -31,7 +31,6 @@ const KEY_COLS = [
   "rid",
   "licitacion_key",
   "organo_key",
-  "modalidad_key",
   "estado_key",
   "cpv_key",
   "lugar_key",
@@ -381,9 +380,8 @@ async function buscar(env, body) {
   if (f.adjudicatario) add(...entityFilter("empresa", f.adjudicatario));
   if (f.organo_id) add(...entityFilter("organo", String(f.organo_id)));
   else if (f.organo) add(...entityFilter("organo", f.organo));
-  const ue = "SELECT modalidad_key FROM modalidad WHERE financiacion_codigo = 'EU'";
-  if (f.financiacion_ue === true) add(`+l.modalidad_key IN (${ue})`);
-  if (f.financiacion_ue === false) add(`+l.modalidad_key NOT IN (${ue})`);
+  if (f.financiacion_ue === true) add("l.funding_program_code = 'EU'");
+  if (f.financiacion_ue === false) add("coalesce(l.funding_program_code, '') <> 'EU'");
 
   // rid is chronological, so "newest first" is a reverse rowid scan (no sort).
   const order =

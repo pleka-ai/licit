@@ -60,12 +60,6 @@ D1_TABLES: dict[str, D1Table] = {
         "SELECT resultado_key, codigo, descripcion FROM resultado"
         " WHERE resultado_key > 0",
     ),
-    "modalidad": D1Table(
-        ("modalidad_key",),
-        "SELECT modalidad_key, tipo_contrato_codigo, tipo_contrato,"
-        " procedimiento_codigo, procedimiento, tramitacion, sistema_contratacion,"
-        " financiacion_codigo, financiacion FROM modalidad WHERE modalidad_key > 0",
-    ),
     "cpv": D1Table(
         ("cpv_key",),
         "SELECT cpv_key, codigo, descripcion FROM cpv WHERE cpv_key > 0",
@@ -91,16 +85,19 @@ D1_TABLES: dict[str, D1Table] = {
     ),
     "licitacion": D1Table(
         ("licitacion_key",),
+        # The API's row: the licitacion entity joined to its lifecycle fact.
         "SELECT l.licitacion_key, l.id, l.expediente, l.titulo, l.url_place,"
-        " l.organo_key, l.modalidad_key, l.estado_key, l.cpv_key, l.lugar_key,"
-        " l.adjudicatario_key, l.resultado_key, m.tipo_contrato_codigo,"
-        " m.procedimiento_codigo, l.fecha_publicacion, l.fecha_actualizacion,"
-        " l.fecha_limite, l.hora_limite, l.fecha_adjudicacion,"
-        " l.fecha_formalizacion, l.presupuesto_sin_iva, l.presupuesto_con_iva,"
-        " l.valor_estimado, l.duracion, l.duracion_unidad, l.num_lotes,"
-        " l.num_ofertas, l.importe_adjudicado_sin_iva, l.num_documentos,"
+        " c.organo_key, c.estado_key, c.cpv_key, c.lugar_key,"
+        " c.adjudicatario_key, c.resultado_key, l.tipo_contrato_codigo,"
+        " l.tipo_contrato, l.procedimiento_codigo, l.procedimiento,"
+        " l.tramitacion, l.sistema_contratacion, l.financiacion_codigo,"
+        " l.financiacion, c.fecha_publicacion, c.fecha_actualizacion,"
+        " c.fecha_limite, c.hora_limite, c.fecha_adjudicacion,"
+        " c.fecha_formalizacion, c.presupuesto_sin_iva, c.presupuesto_con_iva,"
+        " c.valor_estimado, l.duracion, l.duracion_unidad, c.num_lotes,"
+        " c.num_ofertas, c.importe_adjudicado_sin_iva, c.num_documentos,"
         " l.tasa_subcontratacion_maxima"
-        " FROM licitacion l JOIN modalidad m USING (modalidad_key)",
+        " FROM licitacion l JOIN ciclo_licitacion c USING (licitacion_key)",
         order="fecha_publicacion, licitacion_key",
     ),
     "adjudicacion": D1Table(
@@ -115,7 +112,7 @@ D1_TABLES: dict[str, D1Table] = {
     ),
 }
 
-_DIMENSIONS = ("estado", "resultado", "modalidad", "cpv", "lugar", "organo", "empresa")
+_DIMENSIONS = ("estado", "resultado", "cpv", "lugar", "organo", "empresa")
 
 
 def sql_literal(value: Any) -> str:
