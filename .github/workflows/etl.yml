@@ -141,6 +141,9 @@ jobs:
           DATABASE_URL: ""
         run: |
           aws s3 cp "$BUCKET/parquet/raw/todo/" out/raw/todo-prev --recursive --only-show-errors
+          # The BORME layer (borme.yml); without it its tables are built empty.
+          aws s3 cp "$BUCKET/parquet/raw/borme/" out/borme --recursive --only-show-errors
+          export BORME_RAW=out/borme
           srcs=""
           [ -f out/raw/todo-prev/contract_folder_status.parquet ] && srcs="out/raw/todo-prev"
           [ -f out/raw/reciente/contract_folder_status.parquet ] && srcs="$srcs out/raw/reciente"

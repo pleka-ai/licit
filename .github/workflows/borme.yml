@@ -1,0 +1,102 @@
+name: BORME
+
+# BORME Section A from the BOE open-data API, by year:
+#   cache/borme/<año>.tar.zst     every XML document (download once, re-parse any time)
+#   parquet/raw/borme/<año>/      filing/act/position Parquet (borme.raw)
+# Daily it refreshes the current year (and the previous one in early January),
+# before the ETL builds the model on whatever is published here. On demand it
+# runs any list of years (the history starts in 2009).
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      anios:
+        description: "Años separados por espacio (vacío: el año en curso)"
+        type: string
+        default: ""
+
+concurrency:
+  group: borme
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: src
+  ENVIRONMENT: ci
+  AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  AWS_DEFAULT_REGION: auto
+  AWS_ENDPOINT_URL: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+  BUCKET: ${{ vars.R2_BUCKET || 's3://licit-data' }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      years: ${{ steps.years.outputs.years }}
+    steps:
+      - id: years
+        env:
+          ANIOS: ${{ inputs.anios }}
+        run: |
+          if [ -z "${ANIOS// /}" ]; then
+            ANIOS=$(date -u +%Y)
+            # The last days of December are published in early January.
+            if [ "$(date -u +%j)" -le 7 ]; then ANIOS="$((ANIOS - 1)) $ANIOS"; fi
+          fi
+          echo "$ANIOS" | grep -Eq '^ *[0-9]{4}( +[0-9]{4})* *$' || { echo "anios inválidos"; exit 1; }
+          # shellcheck disable=SC2086  # unquoted to squeeze spaces
+          echo "years=$(echo $ANIOS | jq -Rc 'split(" ") | map(select(. != ""))')" >> "$GITHUB_OUTPUT"
+
+  year:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      # Each job keeps a few requests in flight (borme_max_concurrent): stay
+      # gentle with the BOE.
+      max-parallel: 4
+      matrix:
+        year: ${{ fromJson(needs.plan.outputs.years) }}
+    env:
+      YEAR: ${{ matrix.year }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - run: uv python install 3.12 && uv sync --frozen
+
+      - name: Restore XML cache
+        run: |
+          mkdir -p cache
+          if aws s3 cp "$BUCKET/cache/borme/$YEAR.tar.zst" cache.tar.zst --only-show-errors; then
+            tar --zstd -xf cache.tar.zst -C cache && rm cache.tar.zst
+          fi
+          find cache -name '*.xml' | wc -l
+
+      - name: Download
+        id: download
+        run: |
+          end=$(date -u +%F)
+          [ "$YEAR" -lt "$(date -u +%Y)" ] && end="$YEAR-12-31"
+          uv run python -m borme.download cache "$YEAR-01-01" "$end"
+
+      - name: Save XML cache
+        # Also after a partial download: the next run resumes from it.
+        if: ${{ !cancelled() }}
+        run: |
+          [ -d "cache/$YEAR" ] || exit 0
+          tar --zstd -cf cache.tar.zst -C cache "$YEAR"
+          ls -lh cache.tar.zst
+          aws s3 cp cache.tar.zst "$BUCKET/cache/borme/$YEAR.tar.zst" --only-show-errors
+
+      - name: Export raw
+        run: |
+          uv run python -m borme.raw cache out "$YEAR"
+          aws s3 sync "out/$YEAR" "$BUCKET/parquet/raw/borme/$YEAR/" --delete --only-show-errors

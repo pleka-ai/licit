@@ -163,6 +163,8 @@ jobs:
         run: |
           aws s3 cp "$BUCKET/parquet/raw/historico/" out/raw/historico --recursive --only-show-errors
           aws s3 cp "$BUCKET/parquet/raw/todo/" out/raw/todo-prev --recursive --only-show-errors
+          aws s3 cp "$BUCKET/parquet/raw/borme/" out/borme --recursive --only-show-errors
+          export BORME_RAW=out/borme
           srcs=$(find out/raw/historico -mindepth 1 -maxdepth 1 -type d | sort)
           if [ -f out/raw/todo-prev/contract_folder_status.parquet ]; then
             srcs="$srcs out/raw/todo-prev"
