@@ -306,14 +306,16 @@
           <cac:PartyName>
             <cbc:Name>TechCorp S.L.</cbc:Name>
           </cac:PartyName>
-          <cac:PostalAddress>
-            <cbc:CityName>Barcelona</cbc:CityName>
-            <cbc:PostalZone>08001</cbc:PostalZone>
+          <cac:PhysicalLocation>
             <cbc:CountrySubentityCode>ES511</cbc:CountrySubentityCode>
-            <cac:Country>
-              <cbc:IdentificationCode>ES</cbc:IdentificationCode>
-            </cac:Country>
-          </cac:PostalAddress>
+            <cac:Address>
+              <cbc:CityName>Barcelona</cbc:CityName>
+              <cbc:PostalZone>08001</cbc:PostalZone>
+              <cac:Country>
+                <cbc:IdentificationCode>ES</cbc:IdentificationCode>
+              </cac:Country>
+            </cac:Address>
+          </cac:PhysicalLocation>
         </cac:WinningParty>
         <cac:WinningParty>
           <cac:PartyIdentification>

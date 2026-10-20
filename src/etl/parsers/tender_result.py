@@ -181,7 +181,10 @@ class TenderResultParser:
             identifier = normalize_nif(identifier)
             name = name or ""
 
-            address = find_first(wp, "PostalAddress")
+            # PLACSP puts the winner's NUTS code in PhysicalLocation and the
+            # rest of its address in PhysicalLocation/Address (find_first
+            # searches descendants).
+            address = find_first(wp, "PhysicalLocation")
 
             parties.append(
                 WinningPartyData(
