@@ -1,7 +1,6 @@
 MODEL (
   name modelo.garantia,
   kind FULL,
-  tags (dimension),
   grain garantia_key,
   description 'Garantía exigida en una licitación (provisional, definitiva, complementaria), en porcentaje o importe.',
   audits (

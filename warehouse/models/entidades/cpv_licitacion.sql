@@ -1,14 +1,13 @@
 MODEL (
   name modelo.cpv_licitacion,
   kind FULL,
-  tags (puente),
   depends_on (modelo.cpv),
   grain (licitacion_key, cpv_n),
-  description 'Tabla puente para la dimensión multivaluada CPV: todos los códigos de un expediente y de sus lotes. `es_principal` marca el que usa licitacion.cpv_key, y `peso` reparte 1 entre los códigos del expediente para sumar sin contar dos veces.',
+  description 'Todos los códigos CPV de una licitación y de sus lotes. `es_principal` marca el que usa ciclo_licitacion.cpv_key, y `peso` reparte 1 entre los códigos de la licitación para sumar sin contar dos veces.',
   audits (
     not_null(columns := (licitacion_key, cpv_n, cpv_key)),
     unique_combination_of_columns(columns := (licitacion_key, cpv_n)),
-    clave_existe(columna := cpv_key, dimension := modelo.cpv)
+    clave_existe(columna := cpv_key, tabla := modelo.cpv)
   )
 );
 

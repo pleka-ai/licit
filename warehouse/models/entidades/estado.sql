@@ -1,9 +1,8 @@
 MODEL (
   name modelo.estado,
   kind FULL,
-  tags (dimension),
   grain estado_key,
-  description 'Estado de un expediente en su ciclo de vida, con la fase y el orden del ciclo.',
+  description 'Estado de una licitación en su ciclo de vida, con la fase y el orden del ciclo.',
   audits (
     not_null(columns := (estado_key, codigo)),
     unique_values(columns := (estado_key)),

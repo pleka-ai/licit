@@ -1,4 +1,4 @@
-"""End to end: parsed fixtures → Postgres → raw → compact → dimensional model."""
+"""End to end: parsed fixtures → Postgres → raw → compact → data model."""
 
 import os
 from pathlib import Path
@@ -55,8 +55,8 @@ async def test_model_builds_from_raw(tmp_path: Path) -> None:
     ):
         assert (tmp_path / "modelo" / f"{table}.parquet").exists(), table
     # The manifest documents each table for the explorer.
-    assert tablas["licitacion"]["tipo"] == "dimension"
-    assert tablas["ciclo_licitacion"]["tipo"] == "hecho"
+    assert tablas["licitacion"]["grupo"] == "entidades"
+    assert tablas["ciclo_licitacion"]["grupo"] == "actividad"
     assert ["licitacion_key", "BIGINT"] in tablas["licitacion"]["columnas"]
 
     out = str(tmp_path / "modelo") + "/"

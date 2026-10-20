@@ -1,9 +1,8 @@
 MODEL (
-  name agregado.resumen_empresa,
+  name resumen.resumen_empresa,
   kind FULL,
-  tags (agregado),
   grain empresa_key,
-  description 'Agregado: adjudicaciones de cada empresa (todas, incluidas las de lotes).'
+  description 'Resumen: adjudicaciones de cada empresa (todas, incluidas las de lotes).'
 );
 
 SELECT

@@ -1,18 +1,17 @@
 MODEL (
   name modelo.presupuesto_lote,
   kind FULL,
-  tags (hecho),
   depends_on (modelo.licitacion, modelo.lote, modelo.organo, modelo.estado, modelo.cpv, modelo.lugar),
   grain lote_key,
-  description 'Hecho de publicación: lo que se licita, al nivel más atómico. Una fila por lote (o por licitación si no tiene lotes) con su presupuesto y las claves de todas sus dimensiones. Sumar presupuesto_sin_iva aquí nunca cuenta dos veces.',
+  description 'Lo que se licita: una fila por lote (o por licitación si no tiene lotes) con su presupuesto. Sumar presupuesto_sin_iva aquí nunca cuenta dos veces.',
   audits (
     not_null(columns := (lote_key, licitacion_key, organo_key, estado_key, cpv_key, lugar_key, fecha_publicacion)),
     unique_values(columns := (lote_key)),
-    clave_existe(columna := lote_key, dimension := modelo.lote),
-    clave_existe(columna := licitacion_key, dimension := modelo.licitacion),
-    clave_existe(columna := organo_key, dimension := modelo.organo),
-    clave_existe(columna := cpv_key, dimension := modelo.cpv),
-    clave_existe(columna := lugar_key, dimension := modelo.lugar)
+    clave_existe(columna := lote_key, tabla := modelo.lote),
+    clave_existe(columna := licitacion_key, tabla := modelo.licitacion),
+    clave_existe(columna := organo_key, tabla := modelo.organo),
+    clave_existe(columna := cpv_key, tabla := modelo.cpv),
+    clave_existe(columna := lugar_key, tabla := modelo.lugar)
   )
 );
 

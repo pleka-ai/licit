@@ -3,9 +3,9 @@ AUDIT (
   blocking true
 );
 
--- Referential integrity for a role-playing foreign key, whose column name
--- differs from the dimension's key (e.g. adjudicatario_key → empresa_key).
+-- Every value of a key column exists in the referenced table, when the column
+-- is named differently from that table's key (adjudicatario_key → empresa_key).
 SELECT f.@columna
 FROM @this_model AS f
-LEFT JOIN @dimension AS d ON d.@clave = f.@columna
+LEFT JOIN @tabla AS d ON d.@clave = f.@columna
 WHERE d.@clave IS NULL

@@ -1,15 +1,14 @@
 MODEL (
   name modelo.anuncio,
   kind FULL,
-  tags (hecho),
   depends_on (modelo.licitacion, modelo.organo, modelo.cpv, modelo.lugar),
   grain (licitacion_key, anuncio_n, publicacion_n),
-  description 'Hecho sin medidas: cada publicación de un anuncio en un medio (perfil del contratante, DOUE, BOE, boletines autonómicos). Los anuncios sin medio tienen publicacion_n = 0.',
+  description 'Cada publicación de un anuncio en un medio (perfil del contratante, DOUE, BOE, boletines autonómicos). Los anuncios sin medio tienen publicacion_n = 0.',
   audits (
     not_null(columns := (licitacion_key, anuncio_n, publicacion_n, organo_key, cpv_key, lugar_key)),
     unique_combination_of_columns(columns := (licitacion_key, anuncio_n, publicacion_n)),
-    clave_existe(columna := licitacion_key, dimension := modelo.licitacion),
-    clave_existe(columna := organo_key, dimension := modelo.organo)
+    clave_existe(columna := licitacion_key, tabla := modelo.licitacion),
+    clave_existe(columna := organo_key, tabla := modelo.organo)
   )
 );
 

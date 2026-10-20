@@ -1,7 +1,6 @@
 MODEL (
   name modelo.clasificacion_exigida,
   kind FULL,
-  tags (dimension),
   grain clasificacion_key,
   description 'Clasificación empresarial (grupo, subgrupo, categoría) exigida para licitar.',
   audits (

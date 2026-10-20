@@ -1,4 +1,4 @@
-"""Sync the API's slice of the dimensional model to Cloudflare D1.
+"""Sync the API's tables of the data model to Cloudflare D1.
 
 D1 mirrors a few tables of the model (worker/schema.sql). Each run compares
 today's model Parquet (:mod:`export.modelo`) with the previous one and writes
@@ -8,8 +8,9 @@ load for an empty database, licitaciones in ``fecha_publicacion`` order so
 that rowids are chronological (the API reads "newest first" as a reverse
 rowid scan).
 
-Dimensions are written before facts (the full-text triggers on licitacion
-read names from organo and empresa) and deleted after them.
+Lookup tables (organo, empresa, cpv…) are written before the tables that
+reference them (the full-text triggers on licitacion read names from organo
+and empresa) and deleted after them.
 
 Usage::
 
@@ -48,8 +49,8 @@ class D1Table:
     order: str = ""
 
 
-# Load order: dimensions, then facts. Reserved members (keys <= 0) stay out of
-# D1 so the API's LEFT JOINs return NULL for them.
+# Load order: lookup tables first. Placeholder rows (keys <= 0) stay out of D1
+# so the API's LEFT JOINs return NULL for them.
 D1_TABLES: dict[str, D1Table] = {
     "estado": D1Table(
         ("estado_key",),
@@ -85,7 +86,7 @@ D1_TABLES: dict[str, D1Table] = {
     ),
     "licitacion": D1Table(
         ("licitacion_key",),
-        # The API's row: the licitacion entity joined to its lifecycle fact.
+        # The API's row: licitacion joined to its ciclo_licitacion row.
         "SELECT l.licitacion_key, l.id, l.expediente, l.titulo, l.url_place,"
         " c.organo_key, c.estado_key, c.cpv_key, c.lugar_key,"
         " c.adjudicatario_key, c.resultado_key, l.tipo_contrato_codigo,"
@@ -112,7 +113,7 @@ D1_TABLES: dict[str, D1Table] = {
     ),
 }
 
-_DIMENSIONS = ("estado", "resultado", "cpv", "lugar", "organo", "empresa")
+_LOOKUPS = ("estado", "resultado", "cpv", "lugar", "organo", "empresa")
 
 
 def sql_literal(value: Any) -> str:
@@ -269,12 +270,12 @@ def build(
             n += len(batch)
         summary.setdefault(table, {})["escritas"] = n
 
-    facts = [t for t in D1_TABLES if t not in _DIMENSIONS]
-    for table in reversed(facts):
+    referencing = [t for t in D1_TABLES if t not in _LOOKUPS]
+    for table in reversed(referencing):
         deletes(table)
     for table in D1_TABLES:
         upserts(table)
-    for table in reversed(_DIMENSIONS):
+    for table in reversed(_LOOKUPS):
         deletes(table)
 
     writer.add(meta_statement(), 1)

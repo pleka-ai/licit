@@ -1,20 +1,19 @@
 MODEL (
   name modelo.ciclo_licitacion,
   kind FULL,
-  tags (hecho),
   depends_on (modelo.licitacion, modelo.organo, modelo.estado, modelo.cpv, modelo.lugar, modelo.empresa, modelo.resultado),
   grain licitacion_key,
-  description 'Snapshot acumulativo de la tramitación: una fila por licitación con las fechas de cada hito (publicación, plazo, cada estado alcanzado, adjudicación, formalización), los días entre hitos y las medidas acumuladas de presupuesto, lotes, adjudicaciones, modificaciones y documentos. Lleva las claves de todas sus dimensiones. Se reescribe cada vez que PLACSP publica una versión nueva del expediente.',
+  description 'Tramitación de cada licitación: una fila por licitación con las fechas de cada hito (publicación, plazo, cada estado alcanzado, adjudicación, formalización), los días entre hitos, el presupuesto y los totales de lotes, adjudicaciones, modificaciones y documentos. Se reescribe cada vez que PLACSP publica una versión nueva del expediente.',
   audits (
     not_null(columns := (licitacion_key, organo_key, estado_key, cpv_key, lugar_key, adjudicatario_key, resultado_key, fecha_publicacion)),
     unique_values(columns := (licitacion_key)),
-    clave_existe(columna := licitacion_key, dimension := modelo.licitacion),
-    clave_existe(columna := organo_key, dimension := modelo.organo),
-    rol_existe(columna := adjudicatario_key, dimension := modelo.empresa, clave := empresa_key),
-    clave_existe(columna := estado_key, dimension := modelo.estado),
-    clave_existe(columna := cpv_key, dimension := modelo.cpv),
-    clave_existe(columna := lugar_key, dimension := modelo.lugar),
-    clave_existe(columna := resultado_key, dimension := modelo.resultado)
+    clave_existe(columna := licitacion_key, tabla := modelo.licitacion),
+    clave_existe(columna := organo_key, tabla := modelo.organo),
+    rol_existe(columna := adjudicatario_key, tabla := modelo.empresa, clave := empresa_key),
+    clave_existe(columna := estado_key, tabla := modelo.estado),
+    clave_existe(columna := cpv_key, tabla := modelo.cpv),
+    clave_existe(columna := lugar_key, tabla := modelo.lugar),
+    clave_existe(columna := resultado_key, tabla := modelo.resultado)
   )
 );
 
@@ -78,7 +77,7 @@ anuncios AS (
 SELECT
   f.licitacion_key,
 
-  -- Dimensions
+  -- Keys
   e.organo_key,
   e.estado_key,
   e.cpv_key,

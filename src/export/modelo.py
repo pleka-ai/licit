@@ -1,9 +1,8 @@
-"""Build the dimensional model with SQLMesh and publish it as Parquet.
+"""Build the data model with SQLMesh and publish it as Parquet.
 
 Runs the ``warehouse/`` SQLMesh project on a fresh DuckDB file over a
 compacted raw set (:mod:`export.compact`), then writes one Parquet file per
-table of the ``modelo`` (dimensions and facts) and ``agregado`` (aggregates)
-schemas, plus ``manifest.json``.
+table of the ``modelo`` and ``resumen`` schemas, plus ``manifest.json``.
 
 Usage::
 
@@ -27,7 +26,7 @@ from shared.logger import get_logger
 logger = get_logger(__name__)
 
 WAREHOUSE_DIR = Path(__file__).resolve().parents[2] / "warehouse"
-SCHEMAS: tuple[str, ...] = ("modelo", "agregado")
+SCHEMAS: tuple[str, ...] = ("modelo", "resumen")
 
 # Few, large row groups: the browser explorer fetches one HTTP range per
 # column chunk, so fewer groups means far fewer round trips.
@@ -48,8 +47,8 @@ FROM modelo.ciclo_licitacion
 def build(raw_dir: Path, database: Path) -> dict[str, dict[str, str]]:
     """Run every warehouse model over ``raw_dir`` into ``database``.
 
-    Returns each published table's role (its SQLMesh tag: dimension, hecho,
-    puente, agregado) and description, for the manifest.
+    Returns each published table's group (the folder under warehouse/models:
+    entidades, actividad, resumenes) and description, for the manifest.
     """
     os.environ["RAW_PATH"] = str(raw_dir.resolve())
     os.environ["WAREHOUSE_DB"] = str(database.resolve())
@@ -61,7 +60,7 @@ def build(raw_dir: Path, database: Path) -> dict[str, dict[str, str]]:
             schema, _, table = model.name.replace('"', "").rpartition(".")
             if schema.rpartition(".")[2] in SCHEMAS:
                 docs[table] = {
-                    "tipo": next(iter(model.tags), ""),
+                    "grupo": model._path.parent.name if model._path else "",
                     "descripcion": model.description or "",
                 }
         return docs
@@ -120,7 +119,6 @@ def publish(
             ).fetchall()
             tables[table] = {
                 "file": path.name,
-                "capa": schema,
                 **(docs or {}).get(table, {}),
                 "columnas": [list(c) for c in columns],
                 "rows": row[0] if row else 0,

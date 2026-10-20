@@ -1,7 +1,6 @@
 MODEL (
-  name agregado.licitacion_abierta,
+  name resumen.licitacion_abierta,
   kind FULL,
-  tags (agregado),
   grain licitacion_key,
   description 'Licitaciones con el plazo de ofertas abierto el día de la carga, desnormalizadas para consultarlas directamente.'
 );

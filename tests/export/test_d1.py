@@ -31,7 +31,7 @@ _MODEL_COLUMNS: dict[str, str] = {
     "resumen_organo": "organo_key BIGINT, licitaciones BIGINT",
     "empresa": "empresa_key BIGINT, nif VARCHAR, nombre VARCHAR",
     "resumen_empresa": "empresa_key BIGINT, contratos BIGINT",
-    # The licitacion entity and its lifecycle fact; test rows list both
+    # licitacion and ciclo_licitacion; test rows list both
     # tables' columns together and _model splits them.
     "licitacion": (
         "licitacion_key BIGINT, id VARCHAR, expediente VARCHAR, titulo VARCHAR,"
@@ -210,7 +210,7 @@ def test_full_load_serves_the_flat_api_view(
             "Adjudicado",
             1,
         ),
-        # Reserved members are not loaded: the API sees NULLs, as before.
+        # Placeholder rows are not loaded: the API sees NULLs, as before.
         ("l-11", None, None, "Servicios", "En plazo", None, None, "72000000", None, 0),
     ]
     # rid follows fecha_publicacion.
@@ -218,7 +218,7 @@ def test_full_load_serves_the_flat_api_view(
         "l-10",
         "l-11",
     ]
-    # The full-text index includes the names resolved from the dimensions.
+    # The full-text index includes the names resolved from organo and empresa.
     hits = db.execute(
         "SELECT l.id FROM licitacion_fts"
         " JOIN licitacion l ON l.rid = licitacion_fts.rowid"

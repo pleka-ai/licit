@@ -1,7 +1,6 @@
 MODEL (
   name modelo.documento,
   kind FULL,
-  tags (dimension),
   grain documento_key,
   description 'Documento de una licitación: pliegos de cláusulas administrativas y de prescripciones técnicas, documentación adicional y anuncios publicados, con su enlace.',
   audits (
