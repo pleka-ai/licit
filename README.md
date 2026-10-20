@@ -2,7 +2,7 @@
 
 Landing: [licit.es](https://licit.es)
 
-API + ETL para explorar datos de licitaciones de la [Plataforma de Contratación del Sector Público](https://contrataciondelestado.es).
+API + ETL para explorar datos de licitaciones de la [Plataforma de Contratación del Sector Público](https://contrataciondelestado.es), cruzadas con el Registro Mercantil que publica el [BORME](https://www.boe.es/diario_borme/).
 
 Optimizada para consumo por agentes de IA: búsqueda unificada, respuestas densas, códigos CODICE resueltos a etiquetas legibles. Todo corre en Cloudflare y GitHub Actions sin coste recurrente.
 
@@ -42,6 +42,9 @@ PLACSP ──► GitHub Actions: Postgres efímero + parser (src/etl), esquema f
                     │ export.raw: tablas del parser → Parquet con claves naturales
                     ▼
            parquet/raw/  (export.compact: un único histórico deduplicado)
+                    │
+BORME (BOE) ──► borme.yml (cron diario, años 2009+ a demanda): XML en cache/borme/,
+                    │ borme.raw → parquet/raw/borme/<año>/
                     │ export.modelo: warehouse/ (SQLMesh sobre DuckDB)
                     ▼
            parquet/modelo/  modelo de datos: entidades, actividad y resúmenes
@@ -57,12 +60,19 @@ Worker "licit" (worker/): api.licit.es (API + Swagger), licit.es (site/ + /data)
   distintos. `export.compact` funde la ventana diaria con los años archivados:
   cada expediente conserva su versión más reciente con sus hijos y la unión de
   todos los estados observados.
+- **BORME.** `src/borme/` descarga de la API de datos abiertos del BOE el sumario
+  de cada día y el XML de la sección A de cada provincia (`borme.download`, con
+  caché por año en R2), separa cada anuncio en actos y cargos (`borme.parser`) y
+  los escribe en Parquet por año (`borme.raw`). Los años publicados no cambian:
+  reprocesar no vuelve a pedir nada al BOE.
 - **Modelo de datos.** `warehouse/` es un proyecto SQLMesh con tablas de
   entidades (`licitacion`, `lote`, `organo`, `empresa`, `cpv`, `lugar`,
   `documento`, `criterio_adjudicacion`…), tablas de actividad que llevan las
   claves de todas ellas (`ciclo_licitacion` con los hitos de la tramitación,
   `presupuesto_lote`, `adjudicacion`, `cambio_estado`, `modificacion`,
-  `anuncio`) y resúmenes. Tablas y convenciones en
+  `anuncio`), el Registro Mercantil (`sociedad`, `persona`, `acto_registral`,
+  `cargo_registral`; `empresa.sociedad_key` enlaza cada adjudicataria con su
+  sociedad) y resúmenes. Tablas y convenciones en
   [warehouse/README.md](warehouse/README.md). Los
   audits (grano, claves, integridad referencial) bloquean la publicación.
 - **Ids estables.** Claves sustitutas deterministas (md5 de la clave de negocio)
@@ -85,7 +95,8 @@ Worker "licit" (worker/): api.licit.es (API + Swagger), licit.es (site/ + /data)
    `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`. Variables: `D1_DATABASE` (base
    D1, también en `wrangler.jsonc`) y, opcional, `R2_BUCKET` (por defecto
    `s3://licit-data`; otra ruta sirve para ensayar sin tocar los datos reales).
-2. Histórico: *Actions → Historico*, modo `todo` (por defecto 2017–2024).
+2. Histórico: *Actions → Historico*, modo `todo` (por defecto 2017–2024), y
+   *Actions → BORME* con los años `2009 … 2026`.
 3. Ventana reciente: *Actions → ETL*, modo `semilla`, años `2025 2026`.
 4. El cron diario mantiene todo al día. El Worker se despliega con `site.yml`.
 
@@ -100,6 +111,7 @@ repetir lo anterior:
 | Ingesta diaria (Postgres) | `parquet/raw/reciente/`, `state/licit.dump` | *ETL*, modo `diario` |
 | Histórico raw y modelo | `parquet/raw/todo/`, `parquet/modelo/` | *ETL* `publicar` o *Historico* `consolidar` |
 | Carga en D1 | D1 + `state/modelo-d1/` (solo tras cargar bien) | igual que la anterior |
+| BORME de un año | `cache/borme/<año>.tar.zst`, `parquet/raw/borme/<año>/` | *BORME* con ese año |
 
 - **Años ya ingeridos.** `scripts/version-parser.sh` es un hash del parser, los
   modelos, el esquema y el export raw. Un año publicado con la misma versión no

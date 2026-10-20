@@ -1,17 +1,19 @@
 # Warehouse
 
-Modelo de datos de licit, construido con SQLMesh sobre DuckDB a partir de la
-capa raw (las tablas del parser exportadas por `export.raw` y fusionadas en un
-histórico por `export.compact`).
+Modelo de datos de licit, construido con SQLMesh sobre DuckDB a partir de dos
+capas raw: las licitaciones (las tablas del parser de PLACSP exportadas por
+`export.raw` y fusionadas en un histórico por `export.compact`) y el Registro
+Mercantil (`borme.raw`: la sección A del BORME desde 2009, un directorio por
+año).
 
 ```
 raw (CODICE, claves naturales)  →  stage (tipado, limpio)  →  modelo  →  resumen
 ```
 
 ```bash
-RAW_PATH=out/raw WAREHOUSE_DB=/tmp/w.duckdb uv run sqlmesh -p warehouse plan --auto-apply
+RAW_PATH=out/raw BORME_PATH=out/borme WAREHOUSE_DB=/tmp/w.duckdb uv run sqlmesh -p warehouse plan --auto-apply
 uv run sqlmesh -p warehouse test
-PYTHONPATH=src uv run python -m export.modelo out/modelo out/raw   # construir y publicar Parquet
+PYTHONPATH=src uv run python -m export.modelo out/modelo out/raw out/borme   # construir y publicar Parquet
 ```
 
 ## Tablas
@@ -29,6 +31,8 @@ PYTHONPATH=src uv run python -m export.modelo out/modelo out/raw   # construir y
 | `documento` | pliego, anexo o anuncio publicado |
 | `criterio_adjudicacion`, `requisito`, `garantia`, `condicion_ejecucion`, `clasificacion_exigida`, `lugar_ejecucion` | término del pliego de una licitación o lote |
 | `cpv_licitacion` | CPV de una licitación o de sus lotes (`es_principal`, `peso`) |
+| `sociedad` | sociedad del Registro Mercantil (BORME), por hoja registral: nombre actual, forma jurídica, constitución, capital, domicilio, objeto social y situación |
+| `persona` | persona física o jurídica con cargos en el BORME, por nombre normalizado (enlazada con su `sociedad` si es una) |
 | `estado`, `resultado`, `calendario` | estado del ciclo, resultado de adjudicación, día |
 
 `models/actividad/`: lo que pasa con ellas, con importes, recuentos y fechas.
@@ -43,8 +47,17 @@ deducir de la licitación, para consultarla sin rodeos.
 | `cambio_estado` | estado observado | ● | | ● | | ● | ● | ● | | momento |
 | `modificacion` | modificación de contrato | ● | | ● | | ● | ● | | | publicación |
 | `anuncio` | anuncio × medio | ● | | ● | | ● | ● | | | anuncio, publicación |
+| `acto_registral` | acto inscrito en el BORME | | | | | | | | | publicación, inscripción |
+| `cargo_registral` | movimiento de un cargo en el BORME | | | | | | | | | publicación |
 
-`models/resumenes/`: tablas pequeñas precalculadas para el explorador.
+`acto_registral` y `cargo_registral` llevan `sociedad_key` (y el segundo
+`persona_key`); `empresa.sociedad_key` une el Registro Mercantil con las
+licitaciones.
+
+`models/resumenes/`: tablas pequeñas precalculadas para el explorador, entre
+ellas `cargo_vigente` (último movimiento de cada persona en cada cargo cuando es
+un nombramiento) y `adjudicataria_registro` (cada adjudicataria con su sociedad,
+cargos en vigor y días entre su constitución y su primera adjudicación).
 
 ## Convenciones
 
@@ -72,6 +85,23 @@ deducir de la licitación, para consultarla sin rodeos.
   `stage.expediente_claves` y las copian todas las tablas de actividad.
 
 ## Notas de la fuente
+
+### BORME
+
+- El BORME no publica NIF ni DNI. Una sociedad se identifica por su hoja
+  registral (registro provincial y número, p. ej. `M 374639`; por su nombre si
+  falta, menos del 1 %), y una persona por su nombre normalizado: dos homónimos
+  son la misma `persona`.
+- `empresa.sociedad_key` se fija cuando alguno de los nombres de la adjudicataria
+  en PLACSP, normalizado (mayúsculas, sin acentos ni puntuación, forma jurídica
+  abreviada: «S.A.», «SA» y «SOCIEDAD ANONIMA» son `SA`), coincide con los de una
+  sola sociedad. Las UTE no se inscriben y nunca se enlazan.
+- Una sociedad que cambia de provincia abre hoja en otro registro y aparece como
+  otra `sociedad`.
+- Los cargos se publican con unas 270 etiquetas distintas («Adm. Unico»,
+  «ADM.UNICO»…); `cargo_tipo` las agrupa.
+
+### PLACSP
 
 - `fecha_publicacion` es la fecha del primer anuncio publicado o, si es anterior,
   la primera vez que se observó el expediente.

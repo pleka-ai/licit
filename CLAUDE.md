@@ -13,6 +13,7 @@
 - `from shared.{models,enums,config,db,codice,logger} import ...`
 - `from etl.{parsers,repositories,services,handlers} import ...`
 - `from export import {raw,compact,modelo,d1,derived}`
+- `from borme import {download,parser,raw}`
 
 ## Naming
 - API routes and response fields (worker/), warehouse tables and columns: **Spanish** (PLACSP terminology).
