@@ -83,7 +83,7 @@ CREATE TRIGGER IF NOT EXISTS licitacion_au AFTER UPDATE OF titulo, organo, adjud
   VALUES (new.rid, new.titulo, new.organo, new.adjudicatario);
 END;
 
--- Derived tables, refreshed by scripts/d1-load.sh after every load so the
+-- Derived tables, rebuilt from the compacted Parquet by export.derived so the
 -- API never aggregates the 1.5M-row table at request time.
 
 CREATE TABLE IF NOT EXISTS empresa (

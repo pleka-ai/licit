@@ -117,6 +117,7 @@ jobs:
       - name: Sync D1
         run: |
           uv run python -m export.d1 build out/d1
+          uv run python -m export.derived out/d1 out/todo/licitacion.parquet
           ./scripts/d1-load.sh out/d1
           uv run python -m export.d1 commit out/d1/pending.json
 
