@@ -104,6 +104,8 @@ export ROOT OUT PG PG_PORT BUCKET
 
 case "$MODE" in
   historico)
+    # $OUT expands in the child shell (exported), not here.
+    # shellcheck disable=SC2016
     printf '%s\n' "${YEARS[@]}" | xargs -P "$PARALLEL" -I{} \
       bash -c '( historico_year {} ) > "$OUT/logs/{}.log" 2>&1; rc=$?
         if [ "$rc" = 0 ]; then echo "OK {}"; else echo "FALLO {} (ver $OUT/logs/{}.log)"; exit 1; fi'

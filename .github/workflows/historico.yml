@@ -125,9 +125,9 @@ jobs:
         # present, and new downloads are added to it.
         if: steps.check.outputs.skip != 'true'
         run: |
-          aws s3 cp "$BUCKET/cache/placsp/" zips --recursive --exclude "*" --include "*_$YEAR.zip" --only-show-errors
+          scripts/reintentar.sh aws s3 cp "$BUCKET/cache/placsp/" zips --recursive --exclude "*" --include "*_$YEAR.zip" --only-show-errors
           uv run python -m etl.handlers.feed_reader --seed --years "$YEAR" --zip-dir zips
-          aws s3 cp zips "$BUCKET/cache/placsp/" --recursive --only-show-errors
+          scripts/reintentar.sh aws s3 cp zips "$BUCKET/cache/placsp/" --recursive --only-show-errors
 
       - name: Export raw year
         if: steps.check.outputs.skip != 'true'
@@ -136,7 +136,7 @@ jobs:
         run: |
           uv run python -m export.raw out/raw
           echo "$VERSION" > out/raw/version.txt
-          aws s3 sync out/raw "$BUCKET/parquet/raw/historico/$YEAR/" --delete --only-show-errors
+          scripts/reintentar.sh aws s3 sync out/raw "$BUCKET/parquet/raw/historico/$YEAR/" --delete --only-show-errors
 
   consolidar:
     needs: year
@@ -161,9 +161,9 @@ jobs:
       - name: Build data model
         # Oldest first and the existing history last: later sources win ties.
         run: |
-          aws s3 cp "$BUCKET/parquet/raw/historico/" out/raw/historico --recursive --only-show-errors
-          aws s3 cp "$BUCKET/parquet/raw/todo/" out/raw/todo-prev --recursive --only-show-errors
-          aws s3 cp "$BUCKET/parquet/raw/borme/" out/borme --recursive --only-show-errors
+          scripts/reintentar.sh aws s3 cp "$BUCKET/parquet/raw/historico/" out/raw/historico --recursive --only-show-errors
+          scripts/reintentar.sh aws s3 cp "$BUCKET/parquet/raw/todo/" out/raw/todo-prev --recursive --only-show-errors
+          scripts/reintentar.sh aws s3 cp "$BUCKET/parquet/raw/borme/" out/borme --recursive --only-show-errors
           export BORME_RAW=out/borme
           srcs=$(find out/raw/historico -mindepth 1 -maxdepth 1 -type d | sort)
           if [ -f out/raw/todo-prev/contract_folder_status.parquet ]; then
@@ -171,12 +171,12 @@ jobs:
           fi
           # shellcheck disable=SC2086
           scripts/modelo.sh out/raw/todo out/modelo $srcs
-          aws s3 cp out/raw/todo "$BUCKET/parquet/raw/todo/" --recursive --only-show-errors
-          aws s3 cp out/modelo "$BUCKET/parquet/modelo/" --recursive --only-show-errors
+          scripts/reintentar.sh aws s3 cp out/raw/todo "$BUCKET/parquet/raw/todo/" --recursive --only-show-errors
+          scripts/reintentar.sh aws s3 cp out/modelo "$BUCKET/parquet/modelo/" --recursive --only-show-errors
 
       - name: Sync D1
         run: |
-          aws s3 cp "$BUCKET/state/modelo-d1/" out/modelo-d1 --recursive --only-show-errors
+          scripts/reintentar.sh aws s3 cp "$BUCKET/state/modelo-d1/" out/modelo-d1 --recursive --only-show-errors
           scripts/d1-sql.sh out/d1 out/modelo out/modelo-d1
           scripts/d1-load.sh out/d1
-          aws s3 sync out/d1/baseline "$BUCKET/state/modelo-d1/" --delete --only-show-errors
+          scripts/reintentar.sh aws s3 sync out/d1/baseline "$BUCKET/state/modelo-d1/" --delete --only-show-errors

@@ -14,7 +14,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mkdir -p "$1" && cd "$1" && pwd)"
 FIX="$ROOT/tests/etl/fixtures"
-PG_URL="${DATABASE_URL:?DATABASE_URL apunta al Postgres de ensayo}"
+: "${DATABASE_URL:?DATABASE_URL apunta al Postgres de ensayo}"
 export PYTHONPATH="$ROOT/src" ENVIRONMENT="${ENVIRONMENT:-ci}"
 export D1_DATABASE="${D1_DATABASE:-licit-datos}" D1_TARGET=local D1_PERSIST_TO="$WORK/d1-local"
 WRANGLER="npx --yes wrangler@4"

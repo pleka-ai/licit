@@ -121,7 +121,7 @@ jobs:
         if: env.MODO != 'publicar'
         run: |
           uv run python -m export.raw out/raw/reciente
-          aws s3 cp out/raw/reciente "$BUCKET/parquet/raw/reciente/" --recursive --only-show-errors
+          scripts/reintentar.sh aws s3 cp out/raw/reciente "$BUCKET/parquet/raw/reciente/" --recursive --only-show-errors
 
       - name: Save state to R2
         # Right after the export: a failure while publishing keeps today's
@@ -130,7 +130,7 @@ jobs:
         run: |
           pg_dump -Fc -Z 9 --no-owner -d "$DATABASE_URL" -f state.dump
           ls -lh state.dump
-          aws s3 cp state.dump "$BUCKET/state/licit.dump" --only-show-errors
+          scripts/reintentar.sh aws s3 cp state.dump "$BUCKET/state/licit.dump" --only-show-errors
 
       # ------------------------------------------------ publish (no Postgres)
 
@@ -140,9 +140,9 @@ jobs:
         env:
           DATABASE_URL: ""
         run: |
-          aws s3 cp "$BUCKET/parquet/raw/todo/" out/raw/todo-prev --recursive --only-show-errors
+          scripts/reintentar.sh aws s3 cp "$BUCKET/parquet/raw/todo/" out/raw/todo-prev --recursive --only-show-errors
           # The BORME layer (borme.yml); without it its tables are built empty.
-          aws s3 cp "$BUCKET/parquet/raw/borme/" out/borme --recursive --only-show-errors
+          scripts/reintentar.sh aws s3 cp "$BUCKET/parquet/raw/borme/" out/borme --recursive --only-show-errors
           export BORME_RAW=out/borme
           srcs=""
           [ -f out/raw/todo-prev/contract_folder_status.parquet ] && srcs="out/raw/todo-prev"
@@ -150,8 +150,8 @@ jobs:
           [ -n "$srcs" ] || { echo "No raw data in $BUCKET/parquet/raw"; exit 1; }
           # shellcheck disable=SC2086
           scripts/modelo.sh out/raw/todo out/modelo $srcs
-          aws s3 cp out/raw/todo "$BUCKET/parquet/raw/todo/" --recursive --only-show-errors
-          aws s3 cp out/modelo "$BUCKET/parquet/modelo/" --recursive --only-show-errors
+          scripts/reintentar.sh aws s3 cp out/raw/todo "$BUCKET/parquet/raw/todo/" --recursive --only-show-errors
+          scripts/reintentar.sh aws s3 cp out/modelo "$BUCKET/parquet/modelo/" --recursive --only-show-errors
 
       - name: Sync D1
         # state/modelo-d1 holds the tables D1 last received (the diff
@@ -160,7 +160,7 @@ jobs:
         env:
           DATABASE_URL: ""
         run: |
-          aws s3 cp "$BUCKET/state/modelo-d1/" out/modelo-d1 --recursive --only-show-errors
+          scripts/reintentar.sh aws s3 cp "$BUCKET/state/modelo-d1/" out/modelo-d1 --recursive --only-show-errors
           scripts/d1-sql.sh out/d1 out/modelo out/modelo-d1
           scripts/d1-load.sh out/d1
-          aws s3 sync out/d1/baseline "$BUCKET/state/modelo-d1/" --delete --only-show-errors
+          scripts/reintentar.sh aws s3 sync out/d1/baseline "$BUCKET/state/modelo-d1/" --delete --only-show-errors

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import ssl
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
@@ -86,7 +87,11 @@ class Downloader:
     async def _get(
         self, http: httpx.AsyncClient, url: str, **kw: Any
     ) -> httpx.Response | None:
-        """GET with retries on 429/5xx/transport errors; None on 404."""
+        """GET with retries on 429/5xx/transport errors; None on 404.
+
+        A TLS failure mid-response (``ssl.SSLError``) can surface unwrapped by
+        httpx: it is retried like any other transport error.
+        """
         delay = self.settings.http_retry_delay
         for attempt in range(1, self.settings.http_max_retries + 1):
             try:
@@ -104,7 +109,7 @@ class Downloader:
                 logger.warning(
                     "BOE status=%s url=%s attempt=%d", resp.status_code, url, attempt
                 )
-            except httpx.TransportError as exc:
+            except (httpx.TransportError, ssl.SSLError) as exc:
                 logger.warning("BOE error=%s url=%s attempt=%d", exc, url, attempt)
             await asyncio.sleep(delay)
             delay *= 2
