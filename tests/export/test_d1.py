@@ -251,7 +251,11 @@ def test_diff_matches_a_full_load_and_keeps_rowids(
             "fecha_publicacion": "2024-04-01 00:00:00",
         }
     )
-    today["cambio_estado"] = today["cambio_estado"][:2]  # one status disappears
+    # One status disappears and a new one appears (a key-only upsert).
+    today["cambio_estado"] = [
+        *today["cambio_estado"][:2],
+        {"licitacion_key": 12, "momento": "2024-04-01 00:00:00", "estado_key": 1},
+    ]
     today["empresa"] = today["empresa"][:1]  # the only company is gone
     today["adjudicacion"] = []
     new = _model(tmp_path / "hoy", today)
