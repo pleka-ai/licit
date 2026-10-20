@@ -46,7 +46,6 @@ fresh_db() {
 }
 
 load_d1() {
-  npx --yes wrangler@4 d1 execute licit --remote --yes --file worker/schema.sql > /dev/null
   "$ROOT/scripts/d1-load.sh" "$1"
 }
 
