@@ -21,7 +21,7 @@ jobs:
       # Same database as the ETL and as the DB binding in wrangler.jsonc.
       D1_DATABASE: ${{ vars.D1_DATABASE || 'licit-api' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Apply D1 schema
         run: npx --yes wrangler@4 d1 execute "$D1_DATABASE" --remote --yes --file worker/schema.sql
       - name: Deploy Worker
