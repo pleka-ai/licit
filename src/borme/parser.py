@@ -108,9 +108,19 @@ _MAX_LABEL = 40
 
 
 def unaccented(text: str) -> str:
-    """Lowercase, no accents: the comparison form of headings and labels."""
-    nfkd = unicodedata.normalize("NFKD", text)
-    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+    """Lowercase, no accents: the comparison form of headings and labels.
+
+    Maps each character to exactly one, so offsets found in the result are
+    offsets in ``text`` (NFKD or ``lower`` alone would expand "…" or "İ").
+    Compose ``text`` first (NFC) for decomposed accents to be dropped.
+    """
+
+    def one(c: str) -> str:
+        base = unicodedata.normalize("NFD", c)[0]
+        low = base.lower()
+        return low if len(low) == 1 else base
+
+    return "".join(one(c) for c in text)
 
 
 _CANONICAL = {unaccented(h): h for h in ACT_HEADINGS}
@@ -293,7 +303,7 @@ def _details(act: Act) -> None:
 
 def acts(paragraph: str) -> tuple[list[Act], Registry]:
     """Split a filing's paragraph into its acts and its registry data."""
-    text = " ".join(paragraph.split())
+    text = unicodedata.normalize("NFC", " ".join(paragraph.split()))
     marks = list(_HEADING_RE.finditer(unaccented(text)))
     found: list[Act] = []
     reg = Registry()

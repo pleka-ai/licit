@@ -125,3 +125,20 @@ def test_helpers() -> None:
     found, reg = acts("Extinción.  Datos registrales. S 8 , H M 1, I/A 2 (1.1.20).")
     assert [a.kind for a in found] == ["Extinción"]
     assert reg.sheet == "M 1"
+
+
+def test_offsets_survive_expanding_and_decomposed_characters() -> None:
+    # "…" expands to three characters under NFKD and "o\u0301" is a
+    # decomposed accent: neither may shift where acts are cut.
+    paragraph = (
+        "Otros conceptos: Nota\u2026\u2026\u2026 aclaratoria. Constitucio\u0301n. "
+        "Comienzo de operaciones: 1.10.26. Capital: 3.000,00 Euros. "
+        "Datos registrales. H M 812345, I/A 1 (8.10.26)."
+    )
+    found, reg = acts(paragraph)
+    assert [(a.kind, a.text) for a in found] == [
+        ("Otros conceptos", "Nota\u2026\u2026\u2026 aclaratoria."),
+        ("Constitución", "Comienzo de operaciones: 1.10.26. Capital: 3.000,00 Euros."),
+    ]
+    assert found[1].capital == 3000.0
+    assert reg.sheet == "M 812345"

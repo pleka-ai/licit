@@ -110,3 +110,28 @@ async def test_tls_failure_is_retried(tmp_path: Path, settings: Settings) -> Non
     result = await download(tmp_path, date(2026, 10, 16), date(2026, 10, 16), settings)
 
     assert (result.downloaded, result.failed) == (1, [])
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_refused_document_does_not_stop_the_rest(
+    tmp_path: Path, settings: Settings
+) -> None:
+    respx.get(SUMMARY_URL.format("20261016")).mock(
+        return_value=httpx.Response(
+            200,
+            json=_summary(
+                ("BORME-A-2026-200-28", "MADRID"), ("BORME-A-2026-200-08", "BARCELONA")
+            ),
+        )
+    )
+    respx.get(XML_URL, params={"id": "BORME-A-2026-200-28"}).mock(
+        return_value=httpx.Response(403)
+    )
+    respx.get(XML_URL, params={"id": "BORME-A-2026-200-08"}).mock(
+        return_value=httpx.Response(200, content=b"<documento/>")
+    )
+
+    result = await download(tmp_path, date(2026, 10, 16), date(2026, 10, 16), settings)
+
+    assert (result.downloaded, result.failed) == (1, ["BORME-A-2026-200-28"])
