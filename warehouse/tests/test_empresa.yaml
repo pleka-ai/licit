@@ -30,3 +30,35 @@ test_empresa_nombre_vigente_y_miembros_reservados:
         - {empresa_key: 1086721481743407, referencia: U1, nombre: UTE Obras, es_ute: true, sociedad_key: -1}
         # Linked through its older name "Viejo SL".
         - {empresa_key: 3369943935712938, referencia: B1, nombre: Nuevo SL, es_ute: false, sociedad_key: 1838055495388572}
+
+test_empresa_enlace_sin_forma_juridica:
+  model: modelo.empresa
+  description: With no exact name match, a winner links ignoring the legal form when the base name points to a single company; a name without a legal form (a person) never falls back; an ambiguous base name links to nothing.
+  inputs:
+    stage.winning_party:
+      rows:
+        - {entry_id: e1, empresa_ref: B2, identifier: B2, identifier_scheme: NIF, name: 'Acme Obras, S.L.U.'}
+        - {entry_id: e1, empresa_ref: P1, identifier: P1, identifier_scheme: NIF, name: Garcia Ana}
+        - {entry_id: e1, empresa_ref: B3, identifier: B3, identifier_scheme: NIF, name: Doble SL}
+    stage.contract_folder_status:
+      rows:
+        - {entry_id: e1, updated: '2024-01-01 00:00:00+00'}
+    stage.codice_code:
+      rows:
+        - {list: country_code, code: ES, description: España}
+    modelo.sociedad: {rows: [{sociedad_key: -1}]}
+    stage.sociedad_nombre:
+      rows:
+        - {sociedad_ref: 'hoja:M 2', nombre_normalizado: ACME OBRAS SL, nombre_base: ACME OBRAS}
+        - {sociedad_ref: 'hoja:M 3', nombre_normalizado: GARCIA ANA SL, nombre_base: GARCIA ANA}
+        - {sociedad_ref: 'hoja:M 4', nombre_normalizado: DOBLE SA, nombre_base: DOBLE}
+        - {sociedad_ref: 'hoja:M 5', nombre_normalizado: DOBLE SLU, nombre_base: DOBLE}
+  outputs:
+    query:
+      partial: true
+      rows:
+        - {empresa_key: -1, referencia: __no_aplica__, sociedad_key: -1}
+        - {empresa_key: 0, referencia: __desconocida__, sociedad_key: -1}
+        - {empresa_key: 1497502367558327, referencia: B2, sociedad_key: 4476479882224900}
+        - {empresa_key: 3054118138525951, referencia: P1, sociedad_key: -1}
+        - {empresa_key: 3746122421476003, referencia: B3, sociedad_key: -1}
