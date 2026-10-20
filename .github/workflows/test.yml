@@ -83,9 +83,61 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/licit
           ENVIRONMENT: ci
 
+  workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -no-color
+
+  # The ETL and Historico steps (scripts/) end to end on the fixtures: parser
+  # CLI, raw export, model, full and diff loads into a local D1, and the API on
+  # wrangler dev. Publishing runs without DATABASE_URL, as in the workflows.
+  pipeline:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: licit
+          POSTGRES_USER: licit
+          POSTGRES_PASSWORD: licit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://licit:licit@localhost:5432/licit
+      ENVIRONMENT: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - run: uv python install 3.12 && uv sync --frozen
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Postgres client
+        run: sudo apt-get install -y -qq postgresql-client > /dev/null
+
+      - name: Apply schema
+        run: ./schema/apply.sh "$DATABASE_URL"
+
+      - name: Rehearse the pipeline
+        run: scripts/ensayo-pipeline.sh out/ensayo
+
   notify:
     runs-on: ubuntu-latest
-    needs: [quality, integration]
+    needs: [quality, integration, workflows, pipeline]
     if: always()
     steps:
       - name: Notify Discord
@@ -93,6 +145,8 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_CI_WEBHOOK_URL }}
           QUALITY: ${{ needs.quality.result }}
           INTEGRATION: ${{ needs.integration.result }}
+          WORKFLOWS: ${{ needs.workflows.result }}
+          PIPELINE: ${{ needs.pipeline.result }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           COMMIT_SHA: ${{ github.sha }}
           COMMIT_AUTHOR: ${{ github.actor }}
@@ -100,7 +154,8 @@ jobs:
         run: |
           [ -z "$DISCORD_WEBHOOK" ] && exit 0
 
-          if [ "$QUALITY" = "success" ] && [ "$INTEGRATION" = "success" ]; then
+          if [ "$QUALITY" = "success" ] && [ "$INTEGRATION" = "success" ] \
+            && [ "$WORKFLOWS" = "success" ] && [ "$PIPELINE" = "success" ]; then
             TITLE="✅ Tests passed"; COLOR=3066993
           else
             TITLE="❌ Tests failed"; COLOR=15158332

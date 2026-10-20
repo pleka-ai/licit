@@ -82,27 +82,35 @@ Worker "licit" (worker/): api.licit.es (API + Swagger), licit.es (site/ + /data)
 ### Puesta en marcha
 
 1. Secrets: `CLOUDFLARE_API_TOKEN` (Workers + D1 edit), `CLOUDFLARE_ACCOUNT_ID`,
-   `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`. Variable opcional `D1_DATABASE`
-   (por defecto `licit-api`).
-2. Ventana reciente: *Actions → ETL*, modo `semilla`, años `2025 2026`.
-3. Histórico: *Actions → Historico* (por defecto 2017–2024). Su último job funde
-   los años, construye el modelo y lo carga en R2 y D1.
+   `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`. Variables: `D1_DATABASE` (base
+   D1, también en `wrangler.jsonc`) y, opcional, `R2_BUCKET` (por defecto
+   `s3://licit-data`; otra ruta sirve para ensayar sin tocar los datos reales).
+2. Histórico: *Actions → Historico*, modo `todo` (por defecto 2017–2024).
+3. Ventana reciente: *Actions → ETL*, modo `semilla`, años `2025 2026`.
 4. El cron diario mantiene todo al día. El Worker se despliega con `site.yml`.
 
-### Migración al nuevo modelo de datos
+### Etapas y reintentos
 
-El esquema de D1 no es compatible con el anterior (tabla plana), y el histórico
-raw no existe todavía. Una vez:
+Cada etapa deja su resultado en R2, así que un fallo se reintenta desde ahí sin
+repetir lo anterior:
 
-1. Crear una base D1 nueva y vacía (`wrangler d1 create licit-datos`), poner su
-   id en `wrangler.jsonc` y la variable de repositorio `D1_DATABASE=licit-datos`.
-2. Lanzar *ETL* en modo `semilla` (o esperar al cron): genera `parquet/raw/` de la
-   ventana, el modelo y, al no haber `state/modelo-d1/`, una carga completa.
-3. Lanzar *Historico* con todos los años: añade 2017–2024 al histórico raw y D1
-   recibe la diferencia.
-4. Desplegar el Worker (`site.yml`) y, cuando todo responda, borrar en R2 los
-   prefijos antiguos `parquet/todo/`, `parquet/reciente/` y `parquet/historico/`,
-   y la base D1 anterior.
+| Etapa | Resultado en R2 | Reintento |
+|---|---|---|
+| Ingesta de un año archivado | `parquet/raw/historico/<año>/` (+ `version.txt`) | *Historico*, modo `ingestar` |
+| Ingesta diaria (Postgres) | `parquet/raw/reciente/`, `state/licit.dump` | *ETL*, modo `diario` |
+| Histórico raw y modelo | `parquet/raw/todo/`, `parquet/modelo/` | *ETL* `publicar` o *Historico* `consolidar` |
+| Carga en D1 | D1 + `state/modelo-d1/` (solo tras cargar bien) | igual que la anterior |
+
+- **Años ya ingeridos.** `scripts/version-parser.sh` es un hash del parser, los
+  modelos, el esquema y el export raw. Un año publicado con la misma versión no
+  se vuelve a ingerir (salvo con `forzar`); solo hace falta reingerir cuando
+  cambia el parser.
+- **Archivos de PLACSP.** Los zips anuales se guardan en `cache/placsp/` y se
+  descargan de PLACSP una sola vez (`feed_reader --zip-dir`).
+- **Ensayo.** `scripts/ensayo-pipeline.sh` ejecuta los mismos scripts que los
+  workflows (`modelo.sh`, `d1-sql.sh`, `d1-load.sh`) sobre los fixtures: parser,
+  raw, modelo, carga completa y por diferencias en un D1 local y la API en
+  `wrangler dev`. Corre en cada PR, junto con `actionlint`.
 
 ## Desarrollo local
 
