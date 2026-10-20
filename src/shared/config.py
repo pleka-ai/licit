@@ -25,11 +25,7 @@ class Settings(BaseSettings):
     db_max_retries: int = 10
     db_retry_delay: float = 3.0
 
-    # Cloudflare export (Parquet on R2 + basic rows on D1)
+    # Cloudflare export (model Parquet on R2, API tables on D1)
     etl_window_days: int = 730
     d1_chunk_rows: int = 50000
     d1_rows_per_insert: int = 40
-
-    # API
-    api_host: str = "0.0.0.0"
-    api_port: int = 8000

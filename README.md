@@ -106,8 +106,8 @@ raw no existe todavía. Una vez:
 ```bash
 cp .env.example .env
 uv sync
+docker compose -f docker-compose.dev.yml up -d
 PYTHONPATH=src uv run pytest tests/
-PYTHONPATH=src uv run uvicorn api.main:app --reload
 ```
 
 Modelo a partir de un Postgres local con datos (`DATABASE_URL`):
