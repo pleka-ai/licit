@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Explorar — licit</title>
-  <meta name="description" content="SQL sobre los datos abiertos de licitaciones públicas, ejecutado en tu navegador con DuckDB.">
+  <meta name="description" content="SQL sobre 1,6 millones de licitaciones públicas de España, ejecutado en tu navegador con DuckDB.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23111'/><text x='16' y='23' font-family='monospace' font-size='20' font-weight='700' fill='%23fff' text-anchor='middle'>l</text></svg>">
   <link rel="stylesheet" href="style.css">
   <script>document.documentElement.classList.replace("no-js","js")</script>
 </head>
-<body>
+<body class="playground-page">
   <nav>
     <div class="container wide">
       <a href="/" class="brand">licit</a>
@@ -22,24 +22,59 @@
   </nav>
 
   <main>
-    <section class="explorer">
+    <section class="pg">
       <div class="container wide">
-        <h1 class="reveal">Explorar<span class="cursor">_</span></h1>
-        <p class="lead reveal">SQL sobre los datos de la PLACSP, ejecutado en tu navegador con DuckDB. Nada pasa por un servidor: solo se descargan los trozos de Parquet que la consulta necesita.</p>
+        <header class="pg-head">
+          <div>
+            <h1>Explorar<span class="cursor">_</span></h1>
+            <p class="lead">SQL sobre 1,6 millones de licitaciones públicas desde 2017. Se ejecuta en tu navegador con DuckDB: solo se descargan los trozos de datos que la consulta necesita.</p>
+          </div>
+          <span class="pg-status" id="status" data-state="loading"><i></i><b id="status-text">Descargando motor…</b></span>
+        </header>
 
-        <div class="chips reveal" id="examples"></div>
+        <div class="pg-examples" id="examples" role="list"></div>
 
-        <div class="editor reveal">
-          <div class="terminal-bar"><span></span><span></span><span></span><em id="db-status">cargando DuckDB…</em></div>
-          <textarea id="sql" spellcheck="false" aria-label="Consulta SQL"></textarea>
-          <div class="editor-actions">
-            <span class="muted" id="tables"></span>
-            <button class="btn" id="run" disabled>Ejecutar <kbd>⌘↵</kbd></button>
+        <div class="pg-grid">
+          <aside class="pg-schema" aria-label="Tablas">
+            <details open id="schema-box">
+              <summary>Tablas</summary>
+              <ul id="schema"><li class="muted">Cargando…</li></ul>
+              <p class="pg-hint">Clic en un nombre para insertarlo.</p>
+            </details>
+          </aside>
+
+          <div class="pg-main">
+            <div class="pg-editor">
+              <div class="pg-bar">
+                <span class="dots"><span></span><span></span><span></span></span>
+                <span class="pg-file">consulta.sql</span>
+                <span class="pg-keys"><kbd>⌘</kbd><kbd>↵</kbd> ejecutar</span>
+              </div>
+              <div class="pg-code">
+                <pre aria-hidden="true"><code id="hl"></code></pre>
+                <textarea id="sql" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Consulta SQL"></textarea>
+              </div>
+              <div class="pg-actions">
+                <button class="pg-btn ghost" id="share" type="button">Copiar enlace</button>
+                <button class="pg-btn" id="run" type="button" disabled>Ejecutar</button>
+              </div>
+            </div>
+
+            <section class="pg-results" aria-live="polite">
+              <div class="pg-toolbar">
+                <span id="meta" class="pg-meta">Elige un ejemplo o escribe tu consulta.</span>
+                <span class="pg-tools">
+                  <span class="pg-toggle" role="tablist" id="view-toggle" hidden>
+                    <button type="button" role="tab" data-view="table" aria-selected="true">Tabla</button>
+                    <button type="button" role="tab" data-view="chart" aria-selected="false">Gráfico</button>
+                  </span>
+                  <button class="pg-btn ghost small" id="csv" type="button" hidden>CSV</button>
+                </span>
+              </div>
+              <div id="out" class="pg-out"><div class="pg-empty">Los resultados aparecerán aquí.</div></div>
+            </section>
           </div>
         </div>
-
-        <p class="muted" id="meta"></p>
-        <div class="table-wrap results" id="results"></div>
       </div>
     </section>
   </main>
@@ -55,58 +90,241 @@
   <script type="module">
     import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm";
 
-    // The first examples hit tiny pre-aggregated tables (instant); the rest
-    // scan the 1.6M-row licitacion table in the browser (a few seconds).
+    // Small pre-aggregated tables answer instantly; "licitacion" scans 1.6M rows
+    // in the browser (several seconds the first time, faster once cached).
     const EXAMPLES = [
-      ["Evolución mensual", `SELECT year(mes) AS anio, sum(licitaciones) AS licitaciones,
+      {
+        title: "Evolución anual",
+        desc: "Licitaciones e importe por año",
+        speed: "instantánea",
+        sql: `SELECT year(mes) AS anio,
+       sum(licitaciones) AS licitaciones,
        round(sum(importe_licitado) / 1e9, 1) AS miles_millones_eur
 FROM resumen_mensual
-GROUP BY 1 ORDER BY 1;`],
-      ["Órganos que más licitan", `SELECT organo, licitaciones,
+GROUP BY anio
+ORDER BY anio;`,
+      },
+      {
+        title: "Quién licita más",
+        desc: "Órganos por importe licitado",
+        speed: "instantánea",
+        sql: `SELECT organo,
+       licitaciones,
        round(importe_licitado / 1e6, 1) AS millones_eur
 FROM resumen_organo
 ORDER BY importe_licitado DESC NULLS LAST
-LIMIT 20;`],
-      ["Empresas con más adjudicaciones", `SELECT adjudicatario, adjudicatario_nif, contratos,
-       round(importe_adjudicado / 1e6, 2) AS millones_eur
+LIMIT 20;`,
+      },
+      {
+        title: "Quién gana más",
+        desc: "Empresas con más adjudicaciones",
+        speed: "instantánea",
+        sql: `SELECT adjudicatario,
+       contratos,
+       round(importe_adjudicado / 1e6, 1) AS millones_eur
 FROM resumen_empresa
 ORDER BY contratos DESC
-LIMIT 20;`],
-      ["Por tipo de contrato", `SELECT tipo_contrato, sum(licitaciones) AS licitaciones,
-       round(sum(importe_licitado) / 1e6, 1) AS millones_eur
-FROM resumen_mensual
-GROUP BY 1 ORDER BY 2 DESC;`],
-      ["Baja media por CPV", `SELECT substr(cpv_principal, 1, 2) AS cpv_division,
-       count(*) AS n,
-       round(avg(100 * (presupuesto_sin_iva - importe_adjudicacion)
-                 / presupuesto_sin_iva), 1) AS baja_media_pct
-FROM licitacion
-WHERE importe_adjudicacion > 0 AND presupuesto_sin_iva > 0
-GROUP BY 1 HAVING n > 5 ORDER BY 3 DESC;`],
-      ["Grandes contratos en plazo", `SELECT fecha_limite, titulo, organo,
+LIMIT 20;`,
+      },
+      {
+        title: "En plazo ahora",
+        desc: "Grandes contratos abiertos",
+        speed: "instantánea",
+        sql: `SELECT fecha_limite,
+       titulo,
+       organo,
        round(presupuesto_sin_iva / 1e6, 2) AS millones_eur
 FROM licitacion_abierta
 WHERE presupuesto_sin_iva > 1e6
 ORDER BY presupuesto_sin_iva DESC
-LIMIT 50;`],
+LIMIT 50;`,
+      },
+      {
+        title: "Tipos de contrato",
+        desc: "Reparto por tipo",
+        speed: "instantánea",
+        sql: `SELECT tipo_contrato,
+       sum(licitaciones) AS licitaciones,
+       round(sum(importe_licitado) / 1e6) AS millones_eur
+FROM resumen_mensual
+GROUP BY tipo_contrato
+ORDER BY licitaciones DESC;`,
+      },
+      {
+        title: "Baja media por sector",
+        desc: "Descuento sobre el presupuesto, por CPV",
+        speed: "1,6 M filas",
+        sql: `SELECT substr(cpv_principal, 1, 2) AS cpv,
+       any_value(cpv_principal_desc) AS ejemplo,
+       count(*) AS adjudicadas,
+       round(avg(100 * (presupuesto_sin_iva - importe_adjudicacion)
+                 / presupuesto_sin_iva), 1) AS baja_media_pct
+FROM licitacion
+WHERE importe_adjudicacion > 0 AND presupuesto_sin_iva > 0
+GROUP BY cpv
+HAVING adjudicadas > 100
+ORDER BY baja_media_pct DESC;`,
+      },
+      {
+        title: "Competencia",
+        desc: "Licitadores medios por tipo",
+        speed: "1,6 M filas",
+        sql: `SELECT tipo_contrato,
+       round(avg(num_licitadores), 1) AS licitadores_medios,
+       count(*) FILTER (WHERE num_licitadores = 1) AS con_un_solo_licitador
+FROM licitacion
+WHERE num_licitadores > 0
+GROUP BY tipo_contrato
+ORDER BY licitadores_medios DESC;`,
+      },
+      {
+        title: "Buscar por texto",
+        desc: "Ciberseguridad en el último año",
+        speed: "1,6 M filas",
+        sql: `SELECT fecha_publicacion::DATE AS fecha,
+       titulo,
+       organo,
+       presupuesto_sin_iva
+FROM licitacion
+WHERE fecha_publicacion >= current_date - INTERVAL 1 YEAR
+  AND titulo ILIKE '%ciberseguridad%'
+ORDER BY fecha_publicacion DESC
+LIMIT 50;`,
+      },
     ];
+
+    const TABLES = [
+      ["licitacion", "1,6 M filas · todas las licitaciones"],
+      ["licitacion_abierta", "en plazo hoy"],
+      ["adjudicacion", "una fila por adjudicatario"],
+      ["lote", "lotes"],
+      ["cpv", "códigos CPV"],
+      ["empresa", "adjudicatarias"],
+      ["resumen_mensual", "mes × tipo"],
+      ["resumen_organo", "por órgano"],
+      ["resumen_empresa", "por empresa"],
+    ];
+
+    const KEYWORDS = new Set(("select from where group by order having limit offset as and or not in is null like ilike between " +
+      "case when then else end join left right inner outer on using with union all distinct desc asc filter over partition " +
+      "interval year month day current_date true false cast create view qualify window").split(" "));
+
+    // Data always comes from licit.es (CORS-enabled), also on previews.
+    const DATA = location.hostname === "licit.es" ? location.origin : "https://licit.es";
 
     const $ = (id) => document.getElementById(id);
     const sql = $("sql");
+    const hl = $("hl");
     const run = $("run");
-    let conn;
+    let conn = null;
+    let last = null;
+    let view = "table";
+    let running = false;
 
-    const chips = $("examples");
-    EXAMPLES.forEach(([label, q], i) => {
-      const b = document.createElement("button");
-      b.className = "chip";
-      b.textContent = label;
-      b.onclick = () => { sql.value = q; execute(); };
-      chips.appendChild(b);
-      if (i === 0) sql.value = q;
+    // ---------------------------------------------------------------- editor
+
+    const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+    const tableNames = new Set(TABLES.map(([t]) => t));
+
+    function highlight(src) {
+      const re = /(--[^\n]*)|('(?:[^']|'')*'?)|(\b\d+(?:\.\d+)?(?:e\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)(\s*\()?|([^\w'-]+|-)/g;
+      let out = "";
+      for (const m of src.matchAll(re)) {
+        if (m[1]) out += `<span class="t-com">${esc(m[1])}</span>`;
+        else if (m[2]) out += `<span class="t-str">${esc(m[2])}</span>`;
+        else if (m[3]) out += `<span class="t-num">${m[3]}</span>`;
+        else if (m[4]) {
+          const w = m[4].toLowerCase();
+          const cls = KEYWORDS.has(w) ? "t-kw" : m[5] ? "t-fn" : tableNames.has(w) ? "t-tbl" : "";
+          out += cls ? `<span class="${cls}">${esc(m[4])}</span>` : esc(m[4]);
+          if (m[5]) out += esc(m[5]);
+        } else out += esc(m[0]);
+      }
+      return out + "\n";
+    }
+
+    function syncEditor() {
+      hl.innerHTML = highlight(sql.value);
+      sql.style.height = "auto";
+      sql.style.height = `${Math.max(sql.scrollHeight, 160)}px`;
+    }
+
+    function setQuery(q, { runNow = false } = {}) {
+      sql.value = q;
+      syncEditor();
+      if (runNow) execute();
+    }
+
+    function insertAtCursor(text) {
+      const { selectionStart: a, selectionEnd: b, value } = sql;
+      sql.value = value.slice(0, a) + text + value.slice(b);
+      sql.selectionStart = sql.selectionEnd = a + text.length;
+      sql.focus();
+      syncEditor();
+    }
+
+    sql.addEventListener("input", syncEditor);
+    sql.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        execute();
+      } else if (e.key === "Tab" && !e.shiftKey) {
+        e.preventDefault();
+        insertAtCursor("  ");
+      }
     });
 
+    // -------------------------------------------------------------- examples
+
+    const examples = $("examples");
+    EXAMPLES.forEach((ex, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "pg-card";
+      b.setAttribute("role", "listitem");
+      b.innerHTML = `<strong></strong><span></span><em data-fast="${ex.speed === "instantánea"}"></em>`;
+      b.querySelector("strong").textContent = ex.title;
+      b.querySelector("span").textContent = ex.desc;
+      b.querySelector("em").textContent = ex.speed;
+      b.onclick = () => {
+        examples.querySelectorAll(".pg-card").forEach((c) => c.removeAttribute("aria-current"));
+        b.setAttribute("aria-current", "true");
+        setQuery(ex.sql, { runNow: true });
+      };
+      examples.appendChild(b);
+      if (i === 0) b.setAttribute("aria-current", "true");
+    });
+
+    const shared = new URLSearchParams(location.hash.slice(1)).get("q");
+    if (shared) examples.querySelectorAll(".pg-card").forEach((c) => c.removeAttribute("aria-current"));
+    setQuery(shared || EXAMPLES[0].sql);
+
+    $("share").onclick = async () => {
+      const url = `${location.origin}${location.pathname}#q=${encodeURIComponent(sql.value)}`;
+      history.replaceState(null, "", url);
+      try {
+        await navigator.clipboard.writeText(url);
+        flash($("share"), "¡Copiado!");
+      } catch {
+        flash($("share"), "Enlace en la barra");
+      }
+    };
+
+    function flash(el, text) {
+      const old = el.textContent;
+      el.textContent = text;
+      setTimeout(() => (el.textContent = old), 1600);
+    }
+
+    // ---------------------------------------------------------------- engine
+
+    function status(state, text) {
+      $("status").dataset.state = state;
+      $("status-text").textContent = text;
+    }
+
     async function boot() {
+      status("loading", "Descargando motor…");
       const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
       const workerUrl = URL.createObjectURL(
         new Blob([`importScripts("${bundle.mainWorker}");`], { type: "text/javascript" }),
@@ -116,76 +334,238 @@ LIMIT 50;`],
       URL.revokeObjectURL(workerUrl);
       conn = await db.connect();
 
-      // One compacted, deduplicated file per table (rebuilt daily by CI),
-      // requested by version so a new upload never mixes with cached ranges.
-      const names = [
-        "licitacion", "lote", "adjudicacion", "cpv", "empresa",
-        "resumen_mensual", "resumen_organo", "resumen_empresa", "licitacion_abierta",
-      ];
-      const index = await (await fetch("/data/index.json", { cache: "no-store" })).json();
+      status("loading", "Conectando datos…");
+      // One compacted file per table (rebuilt daily), requested by version so
+      // a new upload never mixes with cached byte ranges.
+      const index = await (await fetch(`${DATA}/data/index.json`, { cache: "no-store" })).json();
       const version = Object.fromEntries(index.ficheros.map((f) => [f.ruta, f.version]));
-      for (const t of names) {
+      for (const [t] of TABLES) {
         const ruta = `/data/parquet/todo/${t}.parquet`;
-        const src = `${location.origin}${ruta}?v=${version[ruta] || Date.now()}`;
+        const src = `${DATA}${ruta}?v=${version[ruta] || Date.now()}`;
         await conn.query(`CREATE VIEW ${t} AS SELECT * FROM read_parquet('${src}')`);
       }
-      $("tables").textContent = names.length ? `Tablas: ${names.join(", ")}` : "Aún no hay datos publicados.";
-      $("db-status").textContent = `DuckDB ${await db.getVersion()} · listo`;
-      run.disabled = names.length === 0;
-      if (names.length) execute();
+      status("ready", `Listo · DuckDB ${await db.getVersion()}`);
+      run.disabled = false;
+      await execute();
+      loadSchema();
     }
 
+    async function loadSchema() {
+      const res = await conn.query(
+        `SELECT table_name, column_name, data_type FROM duckdb_columns()
+         WHERE table_name IN (${TABLES.map(([t]) => `'${t}'`).join(", ")})`,
+      );
+      const cols = {};
+      for (const r of res.toArray()) (cols[r.table_name] ||= []).push([r.column_name, r.data_type]);
+      const ul = $("schema");
+      ul.replaceChildren();
+      for (const [t, desc] of TABLES) {
+        const li = document.createElement("li");
+        const d = document.createElement("details");
+        const s = document.createElement("summary");
+        const name = document.createElement("button");
+        name.type = "button";
+        name.className = "pg-ident";
+        name.textContent = t;
+        name.onclick = (e) => { e.preventDefault(); insertAtCursor(t); };
+        const small = document.createElement("small");
+        small.textContent = desc;
+        s.append(name, small);
+        const list = document.createElement("ul");
+        for (const [c, type] of cols[t] || []) {
+          const item = document.createElement("li");
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "pg-ident";
+          b.textContent = c;
+          b.onclick = () => insertAtCursor(c);
+          const ty = document.createElement("span");
+          ty.textContent = type.toLowerCase().replace("timestamp with time zone", "timestamptz");
+          item.append(b, ty);
+          list.appendChild(item);
+        }
+        d.append(s, list);
+        li.appendChild(d);
+        ul.appendChild(li);
+      }
+    }
+
+    // --------------------------------------------------------------- results
+
     async function execute() {
-      if (!conn || run.disabled) return;
+      if (!conn || running) return;
+      running = true;
       run.disabled = true;
+      run.textContent = "Ejecutando…";
+      $("out").classList.add("busy");
       $("meta").textContent = "Ejecutando…";
       const t0 = performance.now();
       try {
         const res = await conn.query(sql.value);
-        const rows = res.toArray();
-        const cols = res.schema.fields.map((f) => f.name);
-        const types = Object.fromEntries(res.schema.fields.map((f) => [f.name, f.type]));
-        render(cols, rows.slice(0, 500), types);
-        const ms = Math.round(performance.now() - t0);
-        $("meta").textContent = `${rows.length.toLocaleString("es-ES")} filas · ${ms} ms${rows.length > 500 ? " · mostrando 500" : ""}`;
+        const fields = res.schema.fields.map((f) => ({
+          name: f.name,
+          type: String(f.type),
+          scale: f.type.scale ?? 0,
+        }));
+        // HUGEINT/DECIMAL arrive as Arrow Decimal objects (unscaled digits).
+        const decimals = fields.filter((f) => f.type.startsWith("Decimal"));
+        const rows = res.toArray().map((r) => {
+          const o = r.toJSON();
+          for (const f of decimals) {
+            const v = o[f.name];
+            if (v !== null && v !== undefined && typeof v === "object") {
+              o[f.name] = Number(String(v)) / 10 ** f.scale;
+            }
+          }
+          return o;
+        });
+        last = { fields, rows, ms: Math.round(performance.now() - t0) };
+        renderResult();
       } catch (e) {
-        $("results").innerHTML = "";
-        $("meta").textContent = String(e.message || e);
+        last = null;
+        $("view-toggle").hidden = true;
+        $("csv").hidden = true;
+        $("meta").textContent = "Error";
+        const pre = document.createElement("pre");
+        pre.className = "pg-error";
+        pre.textContent = String(e.message || e).replace(/^[A-Za-z ]*Error: /, "");
+        $("out").replaceChildren(pre);
       } finally {
+        running = false;
         run.disabled = false;
+        run.textContent = "Ejecutar";
+        $("out").classList.remove("busy");
       }
     }
+
+    const isNum = (t) => /^(Int|Uint|Float|Decimal)/.test(t);
+    const isTime = (t) => t.startsWith("Date") || t.startsWith("Timestamp");
 
     function fmt(v, type) {
       if (v === null || v === undefined) return "—";
       // Arrow hands DATE/TIMESTAMP back as epoch numbers.
-      const t = String(type);
-      if (t.startsWith("Date")) return new Date(Number(v)).toISOString().slice(0, 10);
-      if (t.startsWith("Timestamp")) return new Date(Number(v)).toISOString().slice(0, 16).replace("T", " ");
+      if (type.startsWith("Date")) return new Date(Number(v)).toISOString().slice(0, 10);
+      if (type.startsWith("Timestamp")) return new Date(Number(v)).toISOString().slice(0, 16).replace("T", " ");
       if (typeof v === "bigint") return v.toLocaleString("es-ES");
-      if (typeof v === "number") return Number.isInteger(v) ? v.toLocaleString("es-ES") : v.toLocaleString("es-ES", { maximumFractionDigits: 2 });
-      if (v instanceof Date) return v.toISOString().slice(0, 10);
+      if (typeof v === "number") {
+        return v.toLocaleString("es-ES", { maximumFractionDigits: Number.isInteger(v) ? 0 : 2 });
+      }
       return String(v);
     }
 
-    function render(cols, rows, types) {
-      const table = document.createElement("table");
-      const head = table.createTHead().insertRow();
-      cols.forEach((c) => { const th = document.createElement("th"); th.textContent = c; head.appendChild(th); });
-      const body = table.createTBody();
-      rows.forEach((r, i) => {
-        const tr = body.insertRow();
-        tr.style.animationDelay = `${Math.min(i, 30) * 15}ms`;
-        cols.forEach((c) => { tr.insertCell().textContent = fmt(r[c], types[c]); });
-      });
-      $("results").replaceChildren(table);
+    function chartable() {
+      if (!last || last.rows.length < 2) return null;
+      // Label: first text/date column, or the first column (e.g. a year)
+      // when everything is numeric. Value: first numeric column after it.
+      const label = last.fields.find((f) => !isNum(f.type)) || last.fields[0];
+      const value = last.fields.find((f) => f !== label && isNum(f.type));
+      return label && value ? { label, value } : null;
     }
 
-    run.onclick = execute;
-    sql.addEventListener("keydown", (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); execute(); }
+    function renderResult() {
+      const { fields, rows, ms } = last;
+      const shown = rows.slice(0, 1000);
+      $("meta").textContent =
+        `${rows.length.toLocaleString("es-ES")} ${rows.length === 1 ? "fila" : "filas"} · ${ms.toLocaleString("es-ES")} ms` +
+        (rows.length > shown.length ? ` · mostrando ${shown.length.toLocaleString("es-ES")}` : "");
+      const canChart = chartable();
+      $("view-toggle").hidden = !canChart;
+      $("csv").hidden = rows.length === 0;
+      if (!canChart) view = "table";
+      for (const b of $("view-toggle").querySelectorAll("button")) {
+        b.setAttribute("aria-selected", String(b.dataset.view === view));
+      }
+      if (rows.length === 0) {
+        $("out").innerHTML = `<div class="pg-empty">La consulta no devuelve filas.</div>`;
+        return;
+      }
+      $("out").replaceChildren(view === "chart" && canChart ? chart(canChart, shown) : table(fields, shown));
+    }
+
+    function table(fields, rows) {
+      const wrap = document.createElement("div");
+      wrap.className = "pg-table";
+      const t = document.createElement("table");
+      const head = t.createTHead().insertRow();
+      for (const f of fields) {
+        const th = document.createElement("th");
+        th.textContent = f.name;
+        if (isNum(f.type)) th.className = "num";
+        head.appendChild(th);
+      }
+      const body = t.createTBody();
+      rows.forEach((r) => {
+        const tr = body.insertRow();
+        for (const f of fields) {
+          const td = tr.insertCell();
+          const text = fmt(r[f.name], f.type);
+          td.textContent = text;
+          if (isNum(f.type)) td.className = "num";
+          else if (isTime(f.type)) td.className = "time";
+          else if (text.length > 60) td.title = text;
+        }
+      });
+      wrap.appendChild(t);
+      return wrap;
+    }
+
+    function chart({ label, value }, rows) {
+      const data = rows.slice(0, 40).map((r) => [fmt(r[label.name], label.type), Number(r[value.name] ?? 0)]);
+      const max = Math.max(...data.map(([, v]) => Math.abs(v)), 1);
+      const box = document.createElement("div");
+      box.className = "pg-chart";
+      const cap = document.createElement("p");
+      cap.className = "pg-chart-cap";
+      cap.textContent = `${value.name} por ${label.name}${rows.length > 40 ? " · primeras 40 filas" : ""}`;
+      box.appendChild(cap);
+      data.forEach(([l, v], i) => {
+        const row = document.createElement("div");
+        row.className = "pg-bar-row";
+        row.innerHTML = `<span class="pg-bar-label"></span><span class="pg-bar-track"><span class="pg-bar-fill"></span></span><span class="pg-bar-val"></span>`;
+        row.querySelector(".pg-bar-label").textContent = l;
+        row.querySelector(".pg-bar-label").title = l;
+        row.querySelector(".pg-bar-val").textContent = fmt(v, value.type);
+        const fill = row.querySelector(".pg-bar-fill");
+        fill.style.setProperty("--w", `${(Math.abs(v) / max) * 100}%`);
+        fill.style.animationDelay = `${i * 18}ms`;
+        box.appendChild(row);
+      });
+      return box;
+    }
+
+    $("view-toggle").addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b || !last) return;
+      view = b.dataset.view;
+      renderResult();
     });
-    boot().catch((e) => { $("db-status").textContent = `Error: ${e.message || e}`; });
+
+    $("csv").onclick = () => {
+      if (!last) return;
+      const q = (s) => (/[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+      const lines = [last.fields.map((f) => q(f.name)).join(",")];
+      for (const r of last.rows) {
+        lines.push(
+          last.fields
+            .map((f) => {
+              const v = r[f.name];
+              if (v === null || v === undefined) return "";
+              if (isTime(f.type)) return fmt(v, f.type);
+              return q(String(v));
+            })
+            .join(","),
+        );
+      }
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" }));
+      a.download = "licit-consulta.csv";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
+
+    run.onclick = execute;
+    if (matchMedia("(max-width: 860px)").matches) $("schema-box").open = false;
+    boot().catch((e) => status("error", `Error al cargar: ${e.message || e}`));
   </script>
 </body>
 </html>
