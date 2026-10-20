@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       anios:
-        description: "Años separados por espacio"
+        description: "Años separados por espacio (vacío: solo consolidar lo ya publicado)"
         type: string
         default: "2017 2018 2019 2020 2021 2022 2023 2024"
 
@@ -39,11 +39,12 @@ jobs:
         env:
           ANIOS: ${{ inputs.anios }}
         run: |
-          echo "$ANIOS" | grep -Eq '^ *[0-9]{4}( +[0-9]{4})* *$' || { echo "anios inválidos"; exit 1; }
+          echo "$ANIOS" | grep -Eq '^ *([0-9]{4}( +[0-9]{4})*)? *$' || { echo "anios inválidos"; exit 1; }
           echo "years=$(echo $ANIOS | jq -Rc 'split(" ") | map(select(. != ""))')" >> "$GITHUB_OUTPUT"
 
   year:
     needs: plan
+    if: ${{ needs.plan.outputs.years != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
