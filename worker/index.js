@@ -19,7 +19,7 @@ const CATALOGOS = ["cpv", "estado", "organo_tipo", "procedimiento", "tipo_contra
 
 // Filters on labels are resolved to codes via the catalogo table, then to an
 // indexed column of licitacion (type and procedure codes are copied there) or
-// to the estado dimension's keys.
+// to the keys of the estado table.
 const CODE_FILTERS = {
   tipo_contrato: (marks) => `l.type_code IN (${marks})`,
   procedimiento: (marks) => `l.procedure_code IN (${marks})`,
@@ -317,7 +317,7 @@ async function codesFor(env, tipo, values) {
 }
 
 // Name (or NIF/UUID) → SQL condition on an indexed key column, resolved
-// inside D1 through the FTS-indexed dimensions (one bound parameter). Keys
+// inside D1 through the FTS-indexed organo and empresa tables (one bound parameter). Keys
 // never travel to JavaScript.
 function entityFilter(tipo, q) {
   const v = String(q).trim();
@@ -433,7 +433,7 @@ async function licitacion(env, id) {
     .bind(col === "id" ? id.toLowerCase() : id)
     .first();
   if (!row) throw new HttpError(404, "Licitacion no encontrada");
-  // Status timeline from the cambio_estado fact, oldest first.
+  // Status timeline from cambio_estado, oldest first.
   const historial = await env.DB.prepare(
     `SELECT coalesce(e.descripcion, c.estado_key) AS estado, c.momento AS fecha
      FROM cambio_estado c LEFT JOIN estado e ON e.estado_key = c.estado_key
@@ -449,7 +449,7 @@ async function licitacion(env, id) {
 }
 
 // Company profiles count every award (per lot, per winner) from the
-// adjudicacion fact; contracting-party profiles count their expedientes.
+// adjudicacion table; contracting-party profiles count their expedientes.
 async function perfil(env, col, value, url) {
   const limit = clampLimit(url.searchParams.get("limit"));
   const offset = decodeCursor(url.searchParams.get("cursor"));
