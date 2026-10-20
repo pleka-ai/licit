@@ -24,6 +24,8 @@ model_defaults:
 
 variables:
   raw_path: {{ env_var('RAW_PATH', 'raw') }}
+  # One directory per year of borme.raw output (filing/act/position).
+  borme_path: {{ env_var('BORME_PATH', 'borme') }}
 
 # Raw tables are read with read_parquet, so column-resolution lint rules
 # cannot see them; model audits cover grain and keys instead.

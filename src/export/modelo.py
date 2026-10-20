@@ -2,16 +2,19 @@
 
 Runs the ``warehouse/`` SQLMesh project on a fresh DuckDB file over a
 compacted raw set (:mod:`export.compact`), then writes one Parquet file per
-table of the ``modelo`` and ``resumen`` schemas, plus ``manifest.json``.
+table of the ``modelo`` and ``resumen`` schemas, plus ``manifest.json``. The
+BORME (:mod:`borme.raw`, one directory per year) is optional: without it the
+model is built with its BORME tables empty.
 
 Usage::
 
-    PYTHONPATH=src uv run python -m export.modelo <out_dir> <raw_dir>
+    PYTHONPATH=src uv run python -m export.modelo <out_dir> <raw_dir> [<borme_dir>]
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import tempfile
@@ -21,6 +24,7 @@ from pathlib import Path
 import duckdb
 from sqlmesh import Context
 
+from borme.raw import ensure
 from shared.logger import get_logger
 
 logger = get_logger(__name__)
@@ -44,13 +48,16 @@ FROM modelo.ciclo_licitacion
 """
 
 
-def build(raw_dir: Path, database: Path) -> dict[str, dict[str, str]]:
-    """Run every warehouse model over ``raw_dir`` into ``database``.
+def build(raw_dir: Path, database: Path, borme_dir: Path) -> dict[str, dict[str, str]]:
+    """Run every warehouse model over ``raw_dir`` and ``borme_dir`` into ``database``.
 
     Returns each published table's group (the folder under warehouse/models:
     entidades, actividad, resumenes) and description, for the manifest.
     """
+    # SQLMesh logs every statement at INFO: keep the CI logs readable.
+    logging.getLogger("sqlmesh").setLevel(logging.WARNING)
     os.environ["RAW_PATH"] = str(raw_dir.resolve())
+    os.environ["BORME_PATH"] = str(borme_dir.resolve())
     os.environ["WAREHOUSE_DB"] = str(database.resolve())
     context = Context(paths=str(WAREHOUSE_DIR))
     try:
@@ -139,22 +146,26 @@ def publish(
     return manifest
 
 
-def export(out_dir: Path, raw_dir: Path) -> dict[str, object]:
-    """Build the model over ``raw_dir`` and publish it to ``out_dir``."""
+def export(
+    out_dir: Path, raw_dir: Path, borme_dir: Path | None = None
+) -> dict[str, object]:
+    """Build the model over ``raw_dir`` and the BORME; publish it to ``out_dir``."""
     with tempfile.TemporaryDirectory() as tmp:
         database = Path(tmp) / "warehouse.duckdb"
-        docs = build(raw_dir, database)
+        borme = ensure(borme_dir or Path(tmp) / "borme")
+        docs = build(raw_dir, database, borme)
         return publish(database, out_dir, docs)
 
 
 def main(argv: list[str] | None = None) -> None:
     args = argv if argv is not None else sys.argv[1:]
     match args:
-        case [out_dir, raw_dir]:
-            manifest = export(Path(out_dir), Path(raw_dir))
+        case [out_dir, raw_dir, *borme] if len(borme) <= 1:
+            borme_dir = Path(borme[0]) if borme else None
+            manifest = export(Path(out_dir), Path(raw_dir), borme_dir)
             logger.info("Manifest: %s", manifest["stats"])
         case _:
-            sys.exit("usage: export.modelo <out_dir> <raw_dir>")
+            sys.exit("usage: export.modelo <out_dir> <raw_dir> [<borme_dir>]")
 
 
 if __name__ == "__main__":

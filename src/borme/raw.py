@@ -140,6 +140,20 @@ def write(out_dir: Path, table_rows: dict[str, list[dict[str, Any]]]) -> dict[st
     return counts
 
 
+EMPTY = "vacio"
+
+
+def ensure(borme_dir: Path) -> Path:
+    """``borme_dir``, with an empty raw set added if it has no year yet.
+
+    Readers glob every year directory; the empty set keeps the schema there
+    before any BORME is ingested (and in tests).
+    """
+    if not any(borme_dir.glob("*/filing.parquet")):
+        write(borme_dir / EMPTY, rows([]))
+    return borme_dir
+
+
 def year(cache_dir: Path, out_dir: Path, yr: int) -> dict[str, int]:
     """Parse every cached document of ``yr`` into ``out_dir/<yr>``."""
     docs = [d for p in sorted((cache_dir / str(yr)).glob("*.xml")) if (d := read(p))]

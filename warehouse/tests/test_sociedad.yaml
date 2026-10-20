@@ -1,0 +1,32 @@
+test_sociedad_historia_y_estado:
+  model: modelo.sociedad
+  description: Current name and province come from the latest filing; capital is the total after the latest increase (not its amount); dissolution and extinction set the status unless the company was reactivated later; a filing without a registry sheet is identified by its name.
+  inputs:
+    stage.borme_filing:
+      rows:
+        - {doc_id: d1, number: 1, published: '2020-01-10', province: MADRID, company: OBRAS SL, sheet: M 1, sociedad_ref: 'hoja:M 1'}
+        - {doc_id: d2, number: 7, published: '2023-05-02', province: TOLEDO, company: OBRAS Y REFORMAS SL, sheet: M 1, sociedad_ref: 'hoja:M 1'}
+        - {doc_id: d1, number: 2, published: '2020-01-10', province: MADRID, company: CERRADA SA, sheet: M 2, sociedad_ref: 'hoja:M 2'}
+        - {doc_id: d2, number: 8, published: '2023-05-02', province: MADRID, company: CERRADA SA, sheet: M 2, sociedad_ref: 'hoja:M 2'}
+        - {doc_id: d1, number: 3, published: '2020-01-10', province: MADRID, company: REABIERTA SL, sheet: M 3, sociedad_ref: 'hoja:M 3'}
+        - {doc_id: d2, number: 9, published: '2024-01-15', province: MADRID, company: REABIERTA SL, sheet: M 3, sociedad_ref: 'hoja:M 3'}
+        - {doc_id: d3, number: 4, published: '2021-01-01', province: MADRID, company: SIN HOJA SL, sheet: null, sociedad_ref: 'nombre:SIN HOJA SL'}
+    stage.borme_act:
+      rows:
+        - {doc_id: d1, number: 1, n: 1, kind: Constitución, capital: 3000.0, address: C/ UNO (MADRID), start_of_operations: '2020-01-02'}
+        - {doc_id: d2, number: 7, n: 1, kind: Ampliación de capital, capital: 7000.0, resulting_capital: 10000.0}
+        - {doc_id: d2, number: 7, n: 2, kind: Cambio de domicilio social, address: C/ DOS (TOLEDO)}
+        - {doc_id: d1, number: 2, n: 1, kind: Disolución}
+        - {doc_id: d2, number: 8, n: 1, kind: Extinción}
+        - {doc_id: d1, number: 3, n: 1, kind: Disolución}
+        - {doc_id: d2, number: 9, n: 1, kind: Reapertura hoja registral}
+  outputs:
+    query:
+      partial: true
+      rows:
+        - {sociedad_key: 1838055495388572, nombre: OBRAS Y REFORMAS SL, provincia: TOLEDO, forma_juridica: SL, fecha_constitucion: '2020-01-10', comienzo_operaciones: '2020-01-02', capital_inicial: 3000.0, capital: 10000.0, domicilio: C/ DOS (TOLEDO), estado: Activa, num_anuncios: 2}
+        - {sociedad_key: 4476479882224900, nombre: CERRADA SA, provincia: MADRID, forma_juridica: SA, fecha_constitucion: null, comienzo_operaciones: null, capital_inicial: null, capital: null, domicilio: null, estado: Extinguida, num_anuncios: 2}
+        - {sociedad_key: 468776016369524, nombre: REABIERTA SL, provincia: MADRID, forma_juridica: SL, fecha_constitucion: null, comienzo_operaciones: null, capital_inicial: null, capital: null, domicilio: null, estado: Activa, num_anuncios: 2}
+        - {sociedad_key: 216796285934661, nombre: SIN HOJA SL, provincia: MADRID, forma_juridica: SL, fecha_constitucion: null, comienzo_operaciones: null, capital_inicial: null, capital: null, domicilio: null, estado: Activa, num_anuncios: 1}
+        - {sociedad_key: 0, nombre: Sociedad desconocida, provincia: null, forma_juridica: null, fecha_constitucion: null, comienzo_operaciones: null, capital_inicial: null, capital: null, domicilio: null, estado: null, num_anuncios: 0}
+        - {sociedad_key: -1, nombre: Sin datos registrales, provincia: null, forma_juridica: null, fecha_constitucion: null, comienzo_operaciones: null, capital_inicial: null, capital: null, domicilio: null, estado: null, num_anuncios: 0}

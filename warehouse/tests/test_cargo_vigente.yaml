@@ -1,0 +1,28 @@
+test_cargo_vigente_ultimo_movimiento:
+  model: resumen.cargo_vigente
+  description: A position is current when the person's latest movement in it is an appointment or a re-election; a removal ends it; a sole member stops being one when the company later loses that status; extinct companies have no current positions.
+  inputs:
+    modelo.cargo_registral:
+      rows:
+        - {documento: d1, anuncio: 1, acto_n: 1, cargo_n: 1, sociedad_key: 10, persona_key: 100, fecha: '2020-01-01', movimiento: Nombramiento, cargo: Adm. Unico, cargo_tipo: Administrador único}
+        - {documento: d2, anuncio: 1, acto_n: 1, cargo_n: 1, sociedad_key: 10, persona_key: 100, fecha: '2022-01-01', movimiento: Cese, cargo: Adm. Unico, cargo_tipo: Administrador único}
+        - {documento: d2, anuncio: 1, acto_n: 2, cargo_n: 1, sociedad_key: 10, persona_key: 101, fecha: '2022-01-01', movimiento: Nombramiento, cargo: Adm. Unico, cargo_tipo: Administrador único}
+        - {documento: d3, anuncio: 1, acto_n: 1, cargo_n: 1, sociedad_key: 10, persona_key: 101, fecha: '2025-01-01', movimiento: Reelección, cargo: Adm. Unico, cargo_tipo: Administrador único}
+        - {documento: d1, anuncio: 2, acto_n: 1, cargo_n: 1, sociedad_key: 10, persona_key: 102, fecha: '2020-01-01', movimiento: Socio único, cargo: Socio único, cargo_tipo: Socio único}
+        - {documento: d1, anuncio: 3, acto_n: 1, cargo_n: 1, sociedad_key: 20, persona_key: 100, fecha: '2020-01-01', movimiento: Nombramiento, cargo: Consejero, cargo_tipo: Consejero}
+    modelo.acto_registral:
+      rows:
+        - {documento: d2, anuncio: 1, acto_n: 3, sociedad_key: 10, fecha: '2021-06-01', tipo: Pérdida del carácter de unipersonalidad}
+    modelo.sociedad:
+      rows:
+        - {sociedad_key: 10, nombre: VIVA SL, estado: Activa}
+        - {sociedad_key: 20, nombre: CERRADA SA, estado: Extinguida}
+    modelo.persona:
+      rows:
+        - {persona_key: 100, nombre: PEREZ ANA, es_persona_juridica: false}
+        - {persona_key: 101, nombre: GOMEZ LUIS, es_persona_juridica: false}
+        - {persona_key: 102, nombre: MATRIZ SA, es_persona_juridica: true}
+  outputs:
+    query:
+      rows:
+        - {sociedad_key: 10, persona_key: 101, cargo_tipo: Administrador único, cargo: Adm. Unico, desde: '2025-01-01', sociedad: VIVA SL, persona: GOMEZ LUIS, es_persona_juridica: false}
