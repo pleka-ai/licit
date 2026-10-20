@@ -20,12 +20,6 @@ _SCHEMA = Path(__file__).parents[2] / "worker" / "schema.sql"
 _MODEL_COLUMNS: dict[str, str] = {
     "estado": "estado_key BIGINT, codigo VARCHAR, descripcion VARCHAR",
     "resultado": "resultado_key BIGINT, codigo VARCHAR, descripcion VARCHAR",
-    "modalidad": (
-        "modalidad_key BIGINT, tipo_contrato_codigo VARCHAR, tipo_contrato VARCHAR,"
-        " procedimiento_codigo VARCHAR, procedimiento VARCHAR, tramitacion VARCHAR,"
-        " sistema_contratacion VARCHAR, financiacion_codigo VARCHAR,"
-        " financiacion VARCHAR"
-    ),
     "cpv": "cpv_key BIGINT, codigo VARCHAR, descripcion VARCHAR",
     "lugar": (
         "lugar_key BIGINT, codigo VARCHAR, nombre VARCHAR, nombre_placsp VARCHAR,"
@@ -37,18 +31,25 @@ _MODEL_COLUMNS: dict[str, str] = {
     "resumen_organo": "organo_key BIGINT, licitaciones BIGINT",
     "empresa": "empresa_key BIGINT, nif VARCHAR, nombre VARCHAR",
     "resumen_empresa": "empresa_key BIGINT, contratos BIGINT",
+    # licitacion and ciclo_licitacion; test rows list both
+    # tables' columns together and _model splits them.
     "licitacion": (
         "licitacion_key BIGINT, id VARCHAR, expediente VARCHAR, titulo VARCHAR,"
-        " url_place VARCHAR, organo_key BIGINT, modalidad_key BIGINT,"
-        " estado_key BIGINT, cpv_key BIGINT, lugar_key BIGINT,"
-        " adjudicatario_key BIGINT, resultado_key BIGINT,"
-        " fecha_publicacion TIMESTAMP, fecha_actualizacion TIMESTAMP,"
-        " fecha_limite DATE, hora_limite VARCHAR, fecha_adjudicacion DATE,"
-        " fecha_formalizacion DATE, presupuesto_sin_iva DOUBLE,"
-        " presupuesto_con_iva DOUBLE, valor_estimado DOUBLE, duracion DOUBLE,"
-        " duracion_unidad VARCHAR, num_lotes INT, num_ofertas INT,"
-        " importe_adjudicado_sin_iva DOUBLE, num_documentos INT,"
+        " url_place VARCHAR, tipo_contrato_codigo VARCHAR, tipo_contrato VARCHAR,"
+        " procedimiento_codigo VARCHAR, procedimiento VARCHAR, tramitacion VARCHAR,"
+        " sistema_contratacion VARCHAR, financiacion_codigo VARCHAR,"
+        " financiacion VARCHAR, duracion DOUBLE, duracion_unidad VARCHAR,"
         " tasa_subcontratacion_maxima DOUBLE"
+    ),
+    "ciclo_licitacion": (
+        "licitacion_key BIGINT, organo_key BIGINT, estado_key BIGINT,"
+        " cpv_key BIGINT, lugar_key BIGINT, adjudicatario_key BIGINT,"
+        " resultado_key BIGINT, fecha_publicacion TIMESTAMP,"
+        " fecha_actualizacion TIMESTAMP, fecha_limite DATE, hora_limite VARCHAR,"
+        " fecha_adjudicacion DATE, fecha_formalizacion DATE,"
+        " presupuesto_sin_iva DOUBLE, presupuesto_con_iva DOUBLE,"
+        " valor_estimado DOUBLE, num_lotes INT, num_ofertas INT,"
+        " importe_adjudicado_sin_iva DOUBLE, num_documentos INT"
     ),
     "adjudicacion": (
         "licitacion_key BIGINT, resultado_n INT, adjudicatario_n INT,"
@@ -65,9 +66,6 @@ _BASE: dict[str, list[dict[str, Any]]] = {
         {"estado_key": 2, "codigo": "ADJ", "descripcion": "Adjudicada"},
     ],
     "resultado": [{"resultado_key": 5, "codigo": "8", "descripcion": "Adjudicado"}],
-    "modalidad": [
-        {"modalidad_key": 3, "tipo_contrato_codigo": "2", "tipo_contrato": "Servicios"}
-    ],
     "cpv": [{"cpv_key": 4, "codigo": "72000000", "descripcion": "Servicios TI"}],
     "lugar": [{"lugar_key": 6, "codigo": "ES300", "nombre": "Madrid"}],
     "organo": [
@@ -86,7 +84,8 @@ _BASE: dict[str, list[dict[str, Any]]] = {
             "id": "l-10",
             "titulo": "Mantenimiento de ascensores",
             "organo_key": 7,
-            "modalidad_key": 3,
+            "tipo_contrato_codigo": "2",
+            "tipo_contrato": "Servicios",
             "estado_key": 2,
             "cpv_key": 4,
             "lugar_key": 6,
@@ -101,7 +100,8 @@ _BASE: dict[str, list[dict[str, Any]]] = {
             "id": "l-11",
             "titulo": "Limpieza viaria",
             "organo_key": 0,
-            "modalidad_key": 3,
+            "tipo_contrato_codigo": "2",
+            "tipo_contrato": "Servicios",
             "estado_key": 1,
             "cpv_key": 4,
             "lugar_key": 6,
@@ -135,7 +135,10 @@ def _model(path: Path, data: dict[str, list[dict[str, Any]]]) -> Path:
     con = duckdb.connect()
     for table, columns in _MODEL_COLUMNS.items():
         con.execute(f"CREATE TABLE {table} ({columns})")
-        for row in data.get(table, []):
+        known = {c.split()[0] for c in columns.split(",")}
+        source = "licitacion" if table == "ciclo_licitacion" else table
+        for full in data.get(source, []):
+            row = {k: v for k, v in full.items() if k in known}
             names = ", ".join(row)
             marks = ", ".join("?" for _ in row)
             con.execute(
@@ -207,7 +210,7 @@ def test_full_load_serves_the_flat_api_view(
             "Adjudicado",
             1,
         ),
-        # Reserved members are not loaded: the API sees NULLs, as before.
+        # Placeholder rows are not loaded: the API sees NULLs, as before.
         ("l-11", None, None, "Servicios", "En plazo", None, None, "72000000", None, 0),
     ]
     # rid follows fecha_publicacion.
@@ -215,7 +218,7 @@ def test_full_load_serves_the_flat_api_view(
         "l-10",
         "l-11",
     ]
-    # The full-text index includes the names resolved from the dimensions.
+    # The full-text index includes the names resolved from organo and empresa.
     hits = db.execute(
         "SELECT l.id FROM licitacion_fts"
         " JOIN licitacion l ON l.rid = licitacion_fts.rowid"
@@ -238,7 +241,8 @@ def test_diff_matches_a_full_load_and_keeps_rowids(
             "id": "l-12",
             "titulo": "Suministro de papel",
             "organo_key": 7,
-            "modalidad_key": 3,
+            "tipo_contrato_codigo": "2",
+            "tipo_contrato": "Servicios",
             "estado_key": 1,
             "cpv_key": 4,
             "lugar_key": 6,

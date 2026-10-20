@@ -2,7 +2,7 @@ name: ETL
 
 # Daily PLACSP ingestion on an ephemeral Postgres. State (pg_dump of the
 # rolling window) lives in R2. The parser's tables are exported as raw Parquet,
-# merged into the raw history, and the dimensional model (warehouse/, SQLMesh)
+# merged into the raw history, and the data model (warehouse/, SQLMesh)
 # is rebuilt from it and published to R2 (explorer) and D1 (API).
 # Archived years (2017+) are loaded by historico.yml.
 #
@@ -121,7 +121,7 @@ jobs:
           uv run python -m export.compact out/raw/todo $srcs
           aws s3 cp out/raw/todo "$BUCKET/parquet/raw/todo/" --recursive --only-show-errors
 
-      - name: Build dimensional model
+      - name: Build data model
         run: |
           uv run python -m export.modelo out/modelo out/raw/todo
           aws s3 cp out/modelo "$BUCKET/parquet/modelo/" --recursive --only-show-errors

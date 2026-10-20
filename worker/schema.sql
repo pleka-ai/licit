@@ -1,11 +1,11 @@
--- D1 schema: the public API's slice of the dimensional model (warehouse/).
+-- D1 schema: the tables of the data model (warehouse/) the public API reads.
 -- Idempotent; applied by scripts/d1-load.sh before every load. Rows come from
 -- the model's Parquet through export.d1 (full load or daily diff).
 --
--- Dimensions carry only real members: the model's reserved members (0/-1)
--- are not loaded, so a LEFT JOIN yields NULL where the API returns null.
+-- The model's placeholder rows (keys 0/-1) are not loaded, so a LEFT JOIN
+-- yields NULL where the API returns null.
 
--- ---------------------------------------------------------------- dimensions
+-- --------------------------------------------------------------- entidades
 
 CREATE TABLE IF NOT EXISTS estado (
   estado_key INTEGER PRIMARY KEY,
@@ -18,21 +18,6 @@ CREATE TABLE IF NOT EXISTS resultado (
   codigo TEXT NOT NULL,
   descripcion TEXT
 );
-
-CREATE TABLE IF NOT EXISTS modalidad (
-  modalidad_key INTEGER PRIMARY KEY,
-  tipo_contrato_codigo TEXT,
-  tipo_contrato TEXT,
-  procedimiento_codigo TEXT,
-  procedimiento TEXT,
-  tramitacion TEXT,
-  sistema_contratacion TEXT,
-  financiacion_codigo TEXT,
-  financiacion TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_modalidad_tipo ON modalidad (tipo_contrato_codigo);
-CREATE INDEX IF NOT EXISTS idx_modalidad_procedimiento ON modalidad (procedimiento_codigo);
 
 CREATE TABLE IF NOT EXISTS cpv (
   cpv_key INTEGER PRIMARY KEY,
@@ -111,9 +96,10 @@ CREATE TRIGGER IF NOT EXISTS empresa_au AFTER UPDATE OF nombre ON empresa BEGIN
   INSERT INTO empresa_fts (rowid, nombre) VALUES (new.empresa_key, new.nombre);
 END;
 
--- --------------------------------------------------------------------- facts
+-- -------------------------------------------------------------- licitaciones
 
--- Accumulating snapshot, one row per expediente. rid follows load order, which
+-- licitacion joined to its ciclo_licitacion row: one row per licitación, as
+-- the API serves it. rid follows load order, which
 -- is chronological (full loads are sorted by fecha_publicacion and new rows
 -- are appended), so "newest first" is a reverse rowid scan. Single-column
 -- indexes end in rowid, so equality filters also come out newest-first.
@@ -125,16 +111,21 @@ CREATE TABLE IF NOT EXISTS licitacion (
   titulo TEXT,
   url_place TEXT,
   organo_key INTEGER NOT NULL,
-  modalidad_key INTEGER NOT NULL,
   estado_key INTEGER NOT NULL,
   cpv_key INTEGER NOT NULL,
   lugar_key INTEGER NOT NULL,
   adjudicatario_key INTEGER NOT NULL,
   resultado_key INTEGER NOT NULL,
-  -- Copied from modalidad: the API's two most used filters stay single-index
-  -- equality lookups that come out in rowid order (no sort).
+  -- From the licitacion table; the two codes are the API's most
+  -- used filters, single-index equality lookups in rowid order (no sort).
   tipo_contrato_codigo TEXT,
+  tipo_contrato TEXT,
   procedimiento_codigo TEXT,
+  procedimiento TEXT,
+  tramitacion TEXT,
+  sistema_contratacion TEXT,
+  financiacion_codigo TEXT,
+  financiacion TEXT,
   fecha_publicacion TEXT,
   fecha_actualizacion TEXT,
   fecha_limite TEXT,
@@ -166,8 +157,8 @@ CREATE INDEX IF NOT EXISTS idx_lic_importe ON licitacion (presupuesto_sin_iva);
 
 -- Full-text index over the title and the names of the contracting party and
 -- the main winner. A plain (not external-content) FTS5 table, so stale rows
--- can be deleted by rowid; triggers resolve the names from the dimensions,
--- which export.d1 always loads before the facts.
+-- can be deleted by rowid; triggers resolve the names from organo and
+-- empresa, which export.d1 always loads before licitacion.
 CREATE VIRTUAL TABLE IF NOT EXISTS licitacion_fts USING fts5(
   titulo, organo, adjudicatario,
   tokenize='unicode61 remove_diacritics 2'
@@ -212,7 +203,7 @@ CREATE TABLE IF NOT EXISTS adjudicacion (
 
 CREATE INDEX IF NOT EXISTS idx_adj_empresa ON adjudicacion (empresa_key);
 
--- Status timeline of each expediente.
+-- Status timeline of each licitación.
 CREATE TABLE IF NOT EXISTS cambio_estado (
   licitacion_key INTEGER NOT NULL,
   momento TEXT NOT NULL,
@@ -222,15 +213,14 @@ CREATE TABLE IF NOT EXISTS cambio_estado (
 
 -- ----------------------------------------------------------- API projection
 
--- The flat licitacion the API has always returned, resolved through the
--- dimensions. SQLite flattens the view into each query, so filters on the
+-- The flat licitacion the API has always returned, with every key resolved
+-- to its labels. SQLite flattens the view into each query, so filters on the
 -- key columns still use licitacion's indexes and its rowid order.
 CREATE VIEW IF NOT EXISTS licitacion_api AS
 SELECT
   l.rid,
   l.licitacion_key,
   l.organo_key,
-  l.modalidad_key,
   l.estado_key,
   l.cpv_key,
   l.lugar_key,
@@ -245,10 +235,10 @@ SELECT
   l.tipo_contrato_codigo AS type_code,
   l.procedimiento_codigo AS procedure_code,
   e.descripcion AS estado,
-  m.tipo_contrato,
-  m.procedimiento,
-  m.tramitacion,
-  m.sistema_contratacion,
+  l.tipo_contrato,
+  l.procedimiento,
+  l.tramitacion,
+  l.sistema_contratacion,
   l.presupuesto_sin_iva,
   l.presupuesto_con_iva,
   l.valor_estimado,
@@ -258,8 +248,8 @@ SELECT
   l.duracion_unidad,
   g.nombre AS lugar_nuts,
   g.nombre_placsp AS lugar_subentidad,
-  m.financiacion_codigo AS funding_program_code,
-  m.financiacion AS programa_financiacion,
+  l.financiacion_codigo AS funding_program_code,
+  l.financiacion AS programa_financiacion,
   l.tasa_subcontratacion_maxima AS tasa_subcontratacion,
   o.id AS organo_id,
   o.nombre AS organo,
@@ -278,7 +268,6 @@ SELECT
   l.num_documentos > 0 AS tiene_documentos
 FROM licitacion l
 LEFT JOIN organo o ON o.organo_key = l.organo_key
-LEFT JOIN modalidad m ON m.modalidad_key = l.modalidad_key
 LEFT JOIN estado e ON e.estado_key = l.estado_key
 LEFT JOIN cpv c ON c.cpv_key = l.cpv_key
 LEFT JOIN lugar g ON g.lugar_key = l.lugar_key

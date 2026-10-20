@@ -2,7 +2,7 @@ MODEL (
   name stage.expediente_claves,
   kind VIEW,
   grain licitacion_key,
-  description 'Claves de dimensión de cada expediente, compartidas por la licitación y por todos sus hechos hijos (patrón cabecera/línea).'
+  description 'Claves de órgano, estado, CPV, lugar y fecha de publicación de cada licitación, resueltas una vez y copiadas por todas las tablas que cuelgan de ella.'
 );
 
 WITH cpv_principal AS (
@@ -33,7 +33,6 @@ SELECT
     timezone('UTC', a.primer_anuncio::TIMESTAMP)
   ) AS fecha_publicacion,
   @clave_o('organo', f.organo_ref) AS organo_key,
-  @modalidad_key(f) AS modalidad_key,
   @clave_o('estado', f.status_code) AS estado_key,
   @clave_o('cpv', c.cpv_code) AS cpv_key,
   c.cpv_code,

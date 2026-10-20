@@ -1,71 +1,23 @@
-test_licitacion_snapshot_acumulativo:
+test_licitacion_entidad:
   model: modelo.licitacion
-  description: Milestones come from the status timeline and the awards; amounts add up across lots; the main winner is the one of the latest award; the public id is md5('licitacion:' || entry_id) as before.
+  description: The licitacion table keeps the public id formula (md5('licitacion:' || entry_id)) and resolves CODICE codes to labels, falling back to the code.
   inputs:
-    modelo.organo: {rows: [{organo_key: 0}]}
-    modelo.modalidad: {rows: [{modalidad_key: 0}]}
-    modelo.estado: {rows: [{estado_key: 0}]}
-    modelo.cpv: {rows: [{cpv_key: 0}]}
-    modelo.lugar: {rows: [{lugar_key: 0}]}
-    modelo.empresa: {rows: [{empresa_key: 0}]}
     stage.contract_folder_status:
       rows:
-        - {licitacion_key: 1, entry_id: e1, contract_folder_id: EXP-1, name: Obra, updated: '2025-04-01 00:00:00+00', submission_deadline_date: '2025-02-10', tax_exclusive_amount: 1000.0, duration_measure: 2, duration_unit_code: ANN}
-    stage.expediente_claves:
+        - {licitacion_key: 1, entry_id: e1, contract_folder_id: EXP-1, name: Obra, title: Título ATOM, feed_type: insiders, status_code: PUB, type_code: '3', procedure_code: '999', funding_program_code: EU}
+    stage.codice_code:
       rows:
-        - {licitacion_key: 1, entry_id: e1, fecha_publicacion: '2025-01-20 00:00:00+00', organo_key: 7, modalidad_key: 8, estado_key: 9, cpv_key: 10, lugar_key: 11}
-    stage.status_change:
-      rows:
-        - {licitacion_key: 1, entry_id: e1, status_code: PUB, updated: '2025-01-20 09:00:00+00'}
-        - {licitacion_key: 1, entry_id: e1, status_code: EV, updated: '2025-02-11 09:00:00+00'}
-        - {licitacion_key: 1, entry_id: e1, status_code: RES, updated: '2025-04-01 00:00:00+00'}
-    modelo.resultado:
-      rows:
-        - {resultado_key: 100, codigo: '8', es_adjudicacion: true}
-        - {resultado_key: 200, codigo: '3', es_adjudicacion: false}
-    modelo.adjudicacion:
-      rows:
-        - {licitacion_key: 1, resultado_n: 1, adjudicatario_n: 1, empresa_key: 501, resultado_key: 100, fecha_adjudicacion: '2025-03-01', importe_sin_iva: 300.0, num_ofertas: 3}
-        - {licitacion_key: 1, resultado_n: 2, adjudicatario_n: 1, empresa_key: 502, resultado_key: 100, fecha_adjudicacion: '2025-03-05', fecha_formalizacion: '2025-03-20', importe_sin_iva: 500.0, num_ofertas: 6}
-        - {licitacion_key: 1, resultado_n: 3, adjudicatario_n: 0, empresa_key: -1, resultado_key: 200, num_ofertas: 0}
-    stage.procurement_project_lot:
-      rows:
-        - {licitacion_key: 1, entry_id: e1, lot_number: '1'}
-        - {licitacion_key: 1, entry_id: e1, lot_number: '2'}
-        - {licitacion_key: 1, entry_id: e1, lot_number: '3'}
-    stage.contract_modification:
-      rows:
-        - {licitacion_key: 1, entry_id: e1, n: 1, modification_tax_exclusive_amount: 50.0}
-    stage.document_reference:
-      rows:
-        - {licitacion_key: 1, entry_id: e1, n: 1}
-        - {licitacion_key: 1, entry_id: e1, n: 2}
-    stage.valid_notice_info:
-      rows:
-        - {licitacion_key: 1, entry_id: e1, n: 1, notice_type_code: DOC_CN}
+        - {list: type_code, code: '3', description: Obras}
+        - {list: status_code, code: PUB, description: EN PLAZO}
   outputs:
     query:
       partial: true
       rows:
         - id: a4c8e5bb-b434-6be6-2c37-c4b26c8cd284
           expediente: EXP-1
-          adjudicatario_key: 502
-          resultado_key: 100
-          fecha_en_plazo: '2025-01-20'
-          fecha_evaluacion: '2025-02-11'
-          fecha_resuelta: '2025-04-01'
-          fecha_anulada: null
-          fecha_adjudicacion: '2025-03-05'
-          fecha_formalizacion: '2025-03-20'
-          dias_hasta_adjudicacion: 44
-          dias_plazo_ofertas: 21
-          duracion_dias: 731
-          num_lotes: 3
-          num_adjudicaciones: 2
-          num_adjudicatarios: 2
-          num_ofertas: 6
-          importe_adjudicado_sin_iva: 800.0
-          num_modificaciones: 1
-          importe_modificaciones_sin_iva: 50.0
-          num_documentos: 2
-          num_anuncios: 1
+          titulo: Obra
+          plataforma: Perfil alojado en PLACSP
+          estado: EN PLAZO
+          tipo_contrato: Obras
+          procedimiento: '999'
+          financiacion_ue: true

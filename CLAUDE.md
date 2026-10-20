@@ -19,8 +19,8 @@
 - Python internals (vars, functions, docstrings): **English**.
 
 ## Data model
-- `schema/` is the parser's staging (CODICE). The public model is `warehouse/` (SQLMesh, Kimball): see `warehouse/README.md`.
-- No `dim_`/`fact_` prefixes: the role is a model tag and its description.
+- `schema/` is the parser's staging (CODICE). The public model is `warehouse/` (SQLMesh): see `warehouse/README.md`.
+- Tables go in `warehouse/models/entidades/`, `actividad/` or `resumenes/`; names carry no prefixes.
 - `uv run sqlmesh -p warehouse test` for model unit tests.
 
 ## Testing

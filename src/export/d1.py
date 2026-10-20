@@ -1,4 +1,4 @@
-"""Sync the API's slice of the dimensional model to Cloudflare D1.
+"""Sync the API's tables of the data model to Cloudflare D1.
 
 D1 mirrors a few tables of the model (worker/schema.sql). Each run compares
 today's model Parquet (:mod:`export.modelo`) with the previous one and writes
@@ -8,8 +8,9 @@ load for an empty database, licitaciones in ``fecha_publicacion`` order so
 that rowids are chronological (the API reads "newest first" as a reverse
 rowid scan).
 
-Dimensions are written before facts (the full-text triggers on licitacion
-read names from organo and empresa) and deleted after them.
+Lookup tables (organo, empresa, cpv…) are written before the tables that
+reference them (the full-text triggers on licitacion read names from organo
+and empresa) and deleted after them.
 
 Usage::
 
@@ -48,8 +49,8 @@ class D1Table:
     order: str = ""
 
 
-# Load order: dimensions, then facts. Reserved members (keys <= 0) stay out of
-# D1 so the API's LEFT JOINs return NULL for them.
+# Load order: lookup tables first. Placeholder rows (keys <= 0) stay out of D1
+# so the API's LEFT JOINs return NULL for them.
 D1_TABLES: dict[str, D1Table] = {
     "estado": D1Table(
         ("estado_key",),
@@ -59,12 +60,6 @@ D1_TABLES: dict[str, D1Table] = {
         ("resultado_key",),
         "SELECT resultado_key, codigo, descripcion FROM resultado"
         " WHERE resultado_key > 0",
-    ),
-    "modalidad": D1Table(
-        ("modalidad_key",),
-        "SELECT modalidad_key, tipo_contrato_codigo, tipo_contrato,"
-        " procedimiento_codigo, procedimiento, tramitacion, sistema_contratacion,"
-        " financiacion_codigo, financiacion FROM modalidad WHERE modalidad_key > 0",
     ),
     "cpv": D1Table(
         ("cpv_key",),
@@ -91,16 +86,19 @@ D1_TABLES: dict[str, D1Table] = {
     ),
     "licitacion": D1Table(
         ("licitacion_key",),
+        # The API's row: licitacion joined to its ciclo_licitacion row.
         "SELECT l.licitacion_key, l.id, l.expediente, l.titulo, l.url_place,"
-        " l.organo_key, l.modalidad_key, l.estado_key, l.cpv_key, l.lugar_key,"
-        " l.adjudicatario_key, l.resultado_key, m.tipo_contrato_codigo,"
-        " m.procedimiento_codigo, l.fecha_publicacion, l.fecha_actualizacion,"
-        " l.fecha_limite, l.hora_limite, l.fecha_adjudicacion,"
-        " l.fecha_formalizacion, l.presupuesto_sin_iva, l.presupuesto_con_iva,"
-        " l.valor_estimado, l.duracion, l.duracion_unidad, l.num_lotes,"
-        " l.num_ofertas, l.importe_adjudicado_sin_iva, l.num_documentos,"
+        " c.organo_key, c.estado_key, c.cpv_key, c.lugar_key,"
+        " c.adjudicatario_key, c.resultado_key, l.tipo_contrato_codigo,"
+        " l.tipo_contrato, l.procedimiento_codigo, l.procedimiento,"
+        " l.tramitacion, l.sistema_contratacion, l.financiacion_codigo,"
+        " l.financiacion, c.fecha_publicacion, c.fecha_actualizacion,"
+        " c.fecha_limite, c.hora_limite, c.fecha_adjudicacion,"
+        " c.fecha_formalizacion, c.presupuesto_sin_iva, c.presupuesto_con_iva,"
+        " c.valor_estimado, l.duracion, l.duracion_unidad, c.num_lotes,"
+        " c.num_ofertas, c.importe_adjudicado_sin_iva, c.num_documentos,"
         " l.tasa_subcontratacion_maxima"
-        " FROM licitacion l JOIN modalidad m USING (modalidad_key)",
+        " FROM licitacion l JOIN ciclo_licitacion c USING (licitacion_key)",
         order="fecha_publicacion, licitacion_key",
     ),
     "adjudicacion": D1Table(
@@ -115,7 +113,7 @@ D1_TABLES: dict[str, D1Table] = {
     ),
 }
 
-_DIMENSIONS = ("estado", "resultado", "modalidad", "cpv", "lugar", "organo", "empresa")
+_LOOKUPS = ("estado", "resultado", "cpv", "lugar", "organo", "empresa")
 
 
 def sql_literal(value: Any) -> str:
@@ -272,12 +270,12 @@ def build(
             n += len(batch)
         summary.setdefault(table, {})["escritas"] = n
 
-    facts = [t for t in D1_TABLES if t not in _DIMENSIONS]
-    for table in reversed(facts):
+    referencing = [t for t in D1_TABLES if t not in _LOOKUPS]
+    for table in reversed(referencing):
         deletes(table)
     for table in D1_TABLES:
         upserts(table)
-    for table in reversed(_DIMENSIONS):
+    for table in reversed(_LOOKUPS):
         deletes(table)
 
     writer.add(meta_statement(), 1)

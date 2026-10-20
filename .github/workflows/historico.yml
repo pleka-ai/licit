@@ -2,7 +2,7 @@ name: Historico
 
 # Back-fill of archived PLACSP years. Each year runs on its own fresh Postgres
 # and publishes its raw export to parquet/raw/historico/<año>/. A final job
-# merges every year into the raw history, rebuilds the dimensional model and
+# merges every year into the raw history, rebuilds the data model and
 # syncs it to R2 and D1, serialised with the daily ETL.
 
 on:
@@ -124,7 +124,7 @@ jobs:
           uv run python -m export.compact out/raw/todo $srcs
           aws s3 cp out/raw/todo "$BUCKET/parquet/raw/todo/" --recursive --only-show-errors
 
-      - name: Build dimensional model
+      - name: Build data model
         run: |
           uv run python -m export.modelo out/modelo out/raw/todo
           aws s3 cp out/modelo "$BUCKET/parquet/modelo/" --recursive --only-show-errors

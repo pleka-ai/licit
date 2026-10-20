@@ -28,15 +28,15 @@ logger = get_logger(__name__)
 
 _FIRST_FILE = 9001
 
-# Joined once: every licitacion with its dimension labels.
+# Joined once: every licitacion with its labels.
 _LIC = """
 CREATE TEMP VIEW lic AS
-SELECT l.*, m.tipo_contrato, m.tipo_contrato_codigo, m.procedimiento,
-       m.procedimiento_codigo, m.tramitacion, e.codigo AS estado_codigo,
+SELECT f.*, l.tipo_contrato, l.tipo_contrato_codigo, l.procedimiento,
+       l.procedimiento_codigo, l.tramitacion, e.codigo AS estado_codigo,
        e.descripcion AS estado, o.tipo AS organo_tipo, c.codigo AS cpv,
        c.descripcion AS cpv_descripcion
-FROM licitacion l
-JOIN modalidad m USING (modalidad_key)
+FROM ciclo_licitacion f
+JOIN licitacion l USING (licitacion_key)
 JOIN estado e USING (estado_key)
 JOIN organo o USING (organo_key)
 JOIN cpv c USING (cpv_key)
@@ -69,7 +69,7 @@ SELECT count(*) AS total_licitaciones,
        strftime(min(fecha_publicacion), '%Y-%m-%dT%H:%M:%S+00:00') AS desde,
        strftime(max(fecha_actualizacion), '%Y-%m-%dT%H:%M:%S+00:00')
          AS ultima_actualizacion
-FROM licitacion
+FROM ciclo_licitacion
 """
 
 

@@ -1,6 +1,6 @@
 test_empresa_nombre_vigente_y_miembros_reservados:
   model: modelo.empresa
-  description: SCD type 1, so a company keeps the name of its most recent award; UTEs are flagged; the reserved members exist.
+  description: A company keeps the name of its most recent award; UTEs are flagged; the placeholder rows exist.
   inputs:
     stage.winning_party:
       rows:
@@ -17,7 +17,7 @@ test_empresa_nombre_vigente_y_miembros_reservados:
   outputs:
     query:
       partial: true
-      # Sorted by key: reserved members first, then md5-derived keys.
+      # Sorted by key: placeholder rows first, then md5-derived keys.
       rows:
         - {empresa_key: -1, referencia: __no_aplica__, nombre: Sin adjudicatario, es_ute: null}
         - {empresa_key: 0, referencia: __desconocida__, nombre: Empresa desconocida, es_ute: null}

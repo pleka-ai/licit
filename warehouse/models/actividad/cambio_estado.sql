@@ -1,0 +1,29 @@
+MODEL (
+  name modelo.cambio_estado,
+  kind FULL,
+  depends_on (modelo.licitacion, modelo.estado, modelo.organo, modelo.cpv, modelo.lugar),
+  grain (licitacion_key, momento, estado_key),
+  description 'Cada estado en que se ha observado una licitación, con cuánto tiempo permaneció en él. Recoge todas las versiones publicadas, no solo la última.',
+  audits (
+    not_null(columns := (licitacion_key, estado_key, organo_key, cpv_key, lugar_key, momento, fecha)),
+    unique_combination_of_columns(columns := (licitacion_key, momento, estado_key)),
+    clave_existe(columna := licitacion_key, tabla := modelo.licitacion),
+    clave_existe(columna := estado_key, tabla := modelo.estado),
+    clave_existe(columna := organo_key, tabla := modelo.organo)
+  )
+);
+
+SELECT
+  s.licitacion_key,
+  @clave_o('estado', s.status_code) AS estado_key,
+  e.organo_key,
+  e.cpv_key,
+  e.lugar_key,
+  s.updated AS momento,
+  s.updated::DATE AS fecha,
+  row_number() OVER w AS orden,
+  lead(s.updated) OVER w IS NULL AS es_actual,
+  date_diff('day', s.updated, lead(s.updated) OVER w) AS dias_en_estado
+FROM stage.status_change AS s
+JOIN stage.expediente_claves AS e USING (licitacion_key)
+WINDOW w AS (PARTITION BY s.licitacion_key ORDER BY s.updated, s.status_code)
