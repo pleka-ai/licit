@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cómo funciona — licit</title>
+  <meta name="description" content="Arquitectura de licit: 1,6 millones de licitaciones públicas servidas sin servidores ni coste recurrente, con GitHub Actions, Cloudflare D1, R2, Workers y DuckDB en el navegador.">
+  <meta property="og:title" content="Cómo funciona licit">
+  <meta property="og:description" content="Sin servidores: ETL en GitHub Actions, SQLite en el edge y DuckDB en tu navegador.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23111'/><text x='16' y='23' font-family='monospace' font-size='20' font-weight='700' fill='%23fff' text-anchor='middle'>l</text></svg>">
+  <link rel="stylesheet" href="style.css">
+  <script>document.documentElement.classList.replace("no-js","js")</script>
+</head>
+<body>
+  <nav>
+    <div class="container wide">
+      <a href="/" class="brand">licit</a>
+      <div class="nav-links">
+        <a href="/explorar">Explorar</a>
+        <a href="/arquitectura" aria-current="page">Cómo funciona</a>
+        <a href="https://api.licit.es/docs">API</a>
+        <a href="https://github.com/pleka-ai/licit" rel="noopener">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="arq">
+    <section class="arq-hero">
+      <div class="container wide">
+        <h1 class="reveal">Cómo funciona<span class="cursor">_</span></h1>
+        <p class="lead reveal">Toda la contratación pública española desde 2017, buscable por API y consultable con SQL, <strong>sin un solo servidor encendido</strong> y sin coste recurrente. Cada pieza corre donde sale más barato y más rápido: GitHub procesa, Cloudflare sirve y tu navegador analiza.</p>
+        <dl class="arq-live reveal" id="live">
+          <div><dt>Licitaciones</dt><dd data-k="total_licitaciones">—</dd></div>
+          <div><dt>Órganos</dt><dd data-k="total_organos">—</dd></div>
+          <div><dt>Empresas</dt><dd data-k="total_empresas">—</dd></div>
+          <div><dt>Última actualización</dt><dd data-k="ultima_sync">—</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="arq-diagram-wrap">
+      <div class="container wide">
+        <div class="arq-diagram reveal" role="img" aria-label="Flujo de datos: la PLACSP alimenta un ETL diario en GitHub Actions, que escribe en Cloudflare R2 (Parquet y estado) y D1 (SQLite). Un Worker de Cloudflare sirve la API desde D1 y los Parquet desde R2. El navegador ejecuta DuckDB sobre los Parquet; los agentes consumen la API.">
+          <svg viewBox="0 0 1180 470" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" class="arq-arrowhead"/>
+              </marker>
+            </defs>
+
+            <!-- edges -->
+            <path class="arq-edge" d="M170,235 L220,235" marker-end="url(#arrow)"/>
+            <path class="arq-edge" d="M470,170 C500,170 500,150 530,150" marker-end="url(#arrow)"/>
+            <path class="arq-edge" d="M470,330 C500,330 500,330 530,330" marker-end="url(#arrow)"/>
+            <path class="arq-edge back" d="M530,195 C495,195 495,215 472,215" marker-end="url(#arrow)"/>
+            <path class="arq-edge" d="M730,150 C760,150 760,205 790,205" marker-end="url(#arrow)"/>
+            <path class="arq-edge" d="M730,330 C760,330 760,265 790,265" marker-end="url(#arrow)"/>
+            <path class="arq-edge" d="M940,205 C970,205 970,140 1000,140" marker-end="url(#arrow)"/>
+            <path class="arq-edge" d="M940,265 C970,265 970,330 1000,330" marker-end="url(#arrow)"/>
+            <text class="arq-edge-label" x="501" y="228">estado</text>
+
+            <!-- PLACSP -->
+            <g class="arq-node">
+              <rect x="20" y="180" width="150" height="110" rx="8"/>
+              <text class="t" x="95" y="216">PLACSP</text>
+              <text class="s" x="95" y="240">feeds ATOM CODICE</text>
+              <text class="s" x="95" y="258">+ archivos anuales</text>
+              <text class="tag gov" x="95" y="279">fuente pública</text>
+            </g>
+
+            <!-- GitHub Actions -->
+            <g class="arq-group">
+              <rect x="220" y="70" width="250" height="360" rx="10"/>
+              <text class="t" x="345" y="98">GitHub Actions</text>
+              <text class="s" x="345" y="117">cada día · 04:30 UTC · ~14 min</text>
+            </g>
+            <g class="arq-node">
+              <rect x="240" y="135" width="210" height="80" rx="8"/>
+              <text class="t" x="345" y="166">Postgres efímero</text>
+              <text class="s" x="345" y="188">restaura · ingiere · poda</text>
+            </g>
+            <g class="arq-node">
+              <rect x="240" y="230" width="210" height="80" rx="8"/>
+              <text class="t" x="345" y="261">ETL en Python</text>
+              <text class="s" x="345" y="283">parsers CODICE (src/etl)</text>
+            </g>
+            <g class="arq-node accent-duck">
+              <rect x="240" y="325" width="210" height="80" rx="8"/>
+              <text class="t" x="345" y="356">DuckDB</text>
+              <text class="s" x="345" y="378">compacta · deduplica · agrega</text>
+            </g>
+
+            <!-- R2 / D1 -->
+            <g class="arq-node accent-cf">
+              <rect x="530" y="95" width="200" height="120" rx="8"/>
+              <text class="t" x="630" y="128">Cloudflare R2</text>
+              <text class="s" x="630" y="152">Parquet compactado</text>
+              <text class="s" x="630" y="170">estado (pg_dump, 1,2 GB)</text>
+              <text class="tag cf" x="630" y="198">almacén de objetos</text>
+            </g>
+            <g class="arq-node accent-cf">
+              <rect x="530" y="270" width="200" height="120" rx="8"/>
+              <text class="t" x="630" y="303">Cloudflare D1</text>
+              <text class="s" x="630" y="327">SQLite + FTS5</text>
+              <text class="s" x="630" y="345">1,6 M filas · 2,2 GB</text>
+              <text class="tag cf" x="630" y="373">base de la API</text>
+            </g>
+
+            <!-- Worker -->
+            <g class="arq-node accent-cf">
+              <rect x="790" y="160" width="150" height="150" rx="8"/>
+              <text class="t" x="865" y="194">Worker</text>
+              <text class="s" x="865" y="218">licit.es</text>
+              <text class="s" x="865" y="236">api.licit.es</text>
+              <text class="s" x="865" y="254">caché en el edge</text>
+              <text class="tag cf" x="865" y="290">sin servidor</text>
+            </g>
+
+            <!-- consumers -->
+            <g class="arq-node accent-you">
+              <rect x="1000" y="85" width="160" height="110" rx="8"/>
+              <text class="t" x="1080" y="120">Tu navegador</text>
+              <text class="s" x="1080" y="144">DuckDB-WASM</text>
+              <text class="s" x="1080" y="162">SQL sobre Parquet</text>
+              <text class="tag you" x="1080" y="183">/explorar</text>
+            </g>
+            <g class="arq-node accent-you">
+              <rect x="1000" y="275" width="160" height="110" rx="8"/>
+              <text class="t" x="1080" y="310">Apps y agentes</text>
+              <text class="s" x="1080" y="334">JSON o Markdown</text>
+              <text class="s" x="1080" y="352">REST /v1/...</text>
+              <text class="tag you" x="1080" y="373">api.licit.es</text>
+            </g>
+          </svg>
+        </div>
+        <p class="arq-legend">
+          <span><i class="dot gh"></i>GitHub</span>
+          <span><i class="dot cf"></i>Cloudflare</span>
+          <span><i class="dot duck"></i>DuckDB</span>
+          <span><i class="dot you"></i>Tu lado</span>
+          <span class="arq-swipe">desliza el diagrama →</span>
+        </p>
+      </div>
+    </section>
+
+    <section class="arq-section">
+      <div class="container wide">
+        <h2 class="reveal">El viaje de un dato</h2>
+        <ol class="arq-steps">
+          <li class="reveal">
+            <span class="n">1</span>
+            <div>
+              <h3>La PLACSP publica</h3>
+              <p>La Plataforma de Contratación del Sector Público expone feeds ATOM en formato CODICE, paginados y sin filtros, y un archivo ZIP por año. Es la única fuente: licit no inventa ni enriquece datos.</p>
+            </div>
+          </li>
+          <li class="reveal">
+            <span class="n">2</span>
+            <div>
+              <h3>GitHub Actions procesa</h3>
+              <p>Cada madrugada se levanta un <strong>Postgres de usar y tirar</strong> dentro de GitHub Actions. Restaura el estado del día anterior desde R2, lee las páginas nuevas del feed con el ETL en Python, normaliza códigos CODICE a etiquetas y poda lo que tiene más de dos años. Al acabar, guarda el nuevo estado y el contenedor desaparece.</p>
+            </div>
+          </li>
+          <li class="reveal">
+            <span class="n">3</span>
+            <div>
+              <h3>DuckDB transforma</h3>
+              <p>DuckDB fusiona el histórico con lo nuevo en un único Parquet sin duplicados, ordenado por fecha, y calcula las tablas derivadas (empresas, órganos, catálogos, resúmenes). Lo que en la base de datos de la API tardaría más de 30 s, aquí tarda menos de un segundo.</p>
+            </div>
+          </li>
+          <li class="reveal">
+            <span class="n">4</span>
+            <div>
+              <h3>Cloudflare guarda</h3>
+              <p>Los cambios del día llegan a <strong>D1</strong> (SQLite gestionado) como upserts que nunca pisan una versión más nueva. Los Parquet y el estado se suben a <strong>R2</strong>. Si D1 se acerca al almacenamiento incluido en el plan, el proceso falla a propósito y avisa.</p>
+            </div>
+          </li>
+          <li class="reveal">
+            <span class="n">5</span>
+            <div>
+              <h3>El Worker sirve</h3>
+              <p>Un único Worker atiende <code>licit.es</code> y <code>api.licit.es</code>: la web estática, la API sobre D1 y los Parquet desde R2 por rangos de bytes. Corre junto a D1 (<em>smart placement</em>) y cachea cada respuesta una hora en el edge.</p>
+            </div>
+          </li>
+          <li class="reveal">
+            <span class="n">6</span>
+            <div>
+              <h3>Tú consultas</h3>
+              <p>Los agentes y las apps llaman a la API y reciben JSON o Markdown. En <a href="/explorar">/explorar</a>, DuckDB compilado a WebAssembly corre <strong>en tu navegador</strong> y descarga solo los trozos de Parquet que necesita tu consulta.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="arq-section">
+      <div class="container wide">
+        <h2 class="reveal">Qué corre dónde</h2>
+        <div class="arq-table reveal">
+          <table>
+            <thead><tr><th>Pieza</th><th>Dónde se ejecuta</th><th>Tecnología</th><th>Por qué ahí</th></tr></thead>
+            <tbody>
+              <tr><td>Ingesta y normalización</td><td><span class="pill gh">GitHub Actions</span></td><td>Python · lxml · asyncpg</td><td>Minutos ilimitados en repos públicos y sin límite de CPU: parsear XML CODICE no cabe en un Worker.</td></tr>
+              <tr><td>Estado del ETL</td><td><span class="pill gh">Actions</span> → <span class="pill cf">R2</span></td><td>PostgreSQL 16 efímero + <code>pg_dump</code></td><td>Reutiliza el ETL ya escrito para Postgres; solo existe mientras corre y su estado cabe en R2.</td></tr>
+              <tr><td>Compactar y agregar</td><td><span class="pill gh">GitHub Actions</span></td><td>DuckDB</td><td>Analítica columnar en memoria: 1,6 M filas en menos de un segundo.</td></tr>
+              <tr><td>Base de la API</td><td><span class="pill cf">Cloudflare D1</span></td><td>SQLite + FTS5</td><td>Búsquedas y fichas leyendo pocas filas por índice, en milisegundos y sin gestionar servidores.</td></tr>
+              <tr><td>Datos abiertos</td><td><span class="pill cf">Cloudflare R2</span></td><td>Parquet (zstd)</td><td>Sin coste por tráfico de salida; formato abierto que leen DuckDB, Polars o pandas.</td></tr>
+              <tr><td>API y web</td><td><span class="pill cf">Cloudflare Workers</span></td><td>JavaScript · caché del edge</td><td>Escala a cero, sin arranque en frío apreciable y en el mismo sitio que D1 y R2.</td></tr>
+              <tr><td>Explorador SQL</td><td><span class="pill you">Tu navegador</span></td><td>DuckDB-WASM</td><td>La CPU la pones tú: coste cero en servidor y SQL completo sobre todo el histórico.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="arq-section">
+      <div class="container wide">
+        <h2 class="reveal">Decisiones que importan</h2>
+        <div class="arq-cards">
+          <article class="reveal">
+            <h3>SQLite para servir, DuckDB para analizar</h3>
+            <p>Una ficha o una búsqueda leen pocas filas por índice: es terreno de SQLite. Una media sobre 1,6 millones de filas lee pocas columnas enteras: es terreno de un motor columnar. Usar cada uno en lo suyo es la diferencia entre milisegundos y decenas de segundos.</p>
+          </article>
+          <article class="reveal">
+            <h3>Postgres que no existe</h3>
+            <p>El ETL original estaba escrito para Postgres. En lugar de reescribirlo, Postgres vive unos minutos al día dentro de GitHub Actions y su estado viaja como un volcado comprimido en R2. Cero servidores y el mismo código.</p>
+          </article>
+          <article class="reveal">
+            <h3>Identificadores que no cambian</h3>
+            <p>Cada ejecución arranca una base nueva, así que los UUID aleatorios duplicarían licitaciones. Los ids públicos se derivan de claves naturales de la PLACSP (<code>md5(entry_id)</code>), y son idénticos en cualquier carga.</p>
+          </article>
+          <article class="reveal">
+            <h3>El orden de carga es un índice</h3>
+            <p>D1 se rellenó en orden cronológico, así que «lo más reciente primero» es recorrer la tabla al revés, sin ordenar nada. Con texto completo, el propio índice FTS5 devuelve los resultados ya ordenados.</p>
+          </article>
+          <article class="reveal">
+            <h3>Upserts que no dependen del orden</h3>
+            <p>Un año histórico puede cargarse después del día de hoy sin estropear nada: cada campo se queda con la versión más nueva, la fecha de publicación con la más antigua y el historial de estados se fusiona.</p>
+          </article>
+          <article class="reveal">
+            <h3>Parquet pensado para HTTP</h3>
+            <p>El navegador pide rangos de bytes, así que hay pocos grupos de filas grandes (menos peticiones), URLs versionadas por etag (nunca se mezclan versiones) y cada rango se cachea en el edge para el siguiente visitante.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="arq-section">
+      <div class="container wide">
+        <h2 class="reveal">En números</h2>
+        <div class="arq-split">
+          <div class="arq-table reveal">
+            <table>
+              <thead><tr><th>Petición</th><th class="num">Antes</th><th class="num">Ahora</th></tr></thead>
+              <tbody>
+                <tr><td>Búsqueda de texto común</td><td class="num">20 s</td><td class="num">0,4 s</td></tr>
+                <tr><td>Buscar empresa u órgano</td><td class="num">10 s</td><td class="num">0,1 s</td></tr>
+                <tr><td>Catálogos</td><td class="num">5 s</td><td class="num">0,1 s</td></tr>
+                <tr><td>Respuesta repetida (caché)</td><td class="num">—</td><td class="num">0,07 s</td></tr>
+                <tr><td>Primera consulta del explorador</td><td class="num">34 s</td><td class="num">&lt; 0,1 s</td></tr>
+              </tbody>
+            </table>
+            <p class="arq-note">Medido contra producción desde España, sin caché salvo donde se indica.</p>
+          </div>
+          <dl class="arq-facts reveal">
+            <div><dt>Servidores encendidos</dt><dd>0</dd></div>
+            <div><dt>Coste recurrente añadido</dt><dd>0 €</dd></div>
+            <div><dt>Histórico</dt><dd>desde 2017</dd></div>
+            <div><dt>Actualización</dt><dd>diaria</dd></div>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <section class="arq-section arq-cta">
+      <div class="container wide">
+        <p class="reveal">Todo el código, el ETL y los workflows son públicos.</p>
+        <div class="hero-actions reveal">
+          <a href="/explorar" class="btn btn-solid">Probar el explorador</a>
+          <a href="https://api.licit.es/docs" class="btn">Ver la API</a>
+          <a href="https://github.com/pleka-ai/licit" class="btn" rel="noopener">Código en GitHub</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container wide">
+      <span>licit &mdash; datos de la <a href="https://contrataciondelestado.es" rel="noopener">PLACSP</a></span>
+      <a href="https://github.com/pleka-ai/licit" rel="noopener">GitHub</a>
+    </div>
+  </footer>
+
+  <script src="app.js" defer></script>
+  <script>
+    (function () {
+      var api = location.hostname === "licit.es" ? "/api/salud" : "https://api.licit.es/salud";
+      fetch(api).then(function (r) { return r.json(); }).then(function (s) {
+        document.querySelectorAll("#live [data-k]").forEach(function (el) {
+          var v = s[el.getAttribute("data-k")];
+          if (v == null) return;
+          if (typeof v === "number") el.textContent = v.toLocaleString("es-ES");
+          else el.textContent = new Date(v).toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+        });
+      }).catch(function () {});
+    })();
+  </script>
+</body>
+</html>
