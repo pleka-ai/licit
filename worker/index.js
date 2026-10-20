@@ -36,7 +36,7 @@ export default {
     }
     try {
       if (url.hostname === API_HOST) return await apiHost(request, env, ctx, url);
-      if (url.pathname.startsWith("/data/")) return serveData(request, env, url);
+      if (url.pathname.startsWith("/data/")) return await serveData(request, env, url, ctx);
       if (url.pathname === "/docs") return Response.redirect(`https://${API_HOST}/docs`, 302);
       if (url.pathname.startsWith("/api/")) {
         return await cachedApi(request, env, ctx, url, url.pathname.slice("/api".length));
@@ -86,14 +86,24 @@ class HttpError extends Error {
 
 // ------------------------------------------------------------------ R2 data
 
-async function serveData(request, env, url) {
+async function serveData(request, env, url, ctx) {
   const key = decodeURIComponent(url.pathname.slice("/data/".length));
   if (key === "" || key === "index.json") return dataIndex(env);
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("Method not allowed", { status: 405 });
   }
+  const range = request.headers.get("range");
+  if (request.method === "GET" && range) return cachedRange(env, ctx, url, key, range);
+
   const obj = await env.DATA.get(key, { range: request.headers, onlyIf: request.headers });
   if (obj === null) return new Response("Not found", { status: 404 });
+  const headers = dataHeaders(obj);
+  if (!("body" in obj)) return new Response(null, { status: 304, headers });
+  headers.set("content-length", String(obj.size));
+  return new Response(request.method === "HEAD" ? null : obj.body, { headers });
+}
+
+function dataHeaders(obj) {
   const headers = new Headers();
   obj.writeHttpMetadata(headers);
   headers.set("etag", obj.httpEtag);
@@ -101,15 +111,44 @@ async function serveData(request, env, url) {
   headers.set("cache-control", "public, max-age=3600");
   headers.set("access-control-allow-origin", "*");
   headers.set("access-control-expose-headers", "content-range, content-length, etag");
-  if (!("body" in obj)) return new Response(null, { status: 304, headers });
-  if (obj.range && request.headers.has("range")) {
-    const { offset = 0, length = obj.size - offset } = obj.range;
-    headers.set("content-range", `bytes ${offset}-${offset + length - 1}/${obj.size}`);
-    headers.set("content-length", String(length));
-    return new Response(request.method === "HEAD" ? null : obj.body, { status: 206, headers });
+  return headers;
+}
+
+// DuckDB-WASM reads Parquet as many small byte ranges, and every viewer asks
+// for the same ones. The Cache API won't store 206s, so each range is cached
+// as a 200 keyed by object etag + range and replayed as a 206.
+async function cachedRange(env, ctx, url, key, range) {
+  const head = await env.DATA.head(key);
+  if (head === null) return new Response("Not found", { status: 404 });
+  const cacheKey = new Request(
+    `${url.origin}/__r2/${encodeURIComponent(key)}?etag=${head.etag}&range=${encodeURIComponent(range)}`,
+  );
+  const cache = caches.default;
+  const hit = await cache.match(cacheKey);
+  if (hit) {
+    const headers = new Headers(hit.headers);
+    headers.set("content-range", headers.get("x-content-range"));
+    headers.delete("x-content-range");
+    headers.set("x-cache", "HIT");
+    return new Response(hit.body, { status: 206, headers });
   }
-  headers.set("content-length", String(obj.size));
-  return new Response(request.method === "HEAD" ? null : obj.body, { headers });
+
+  const obj = await env.DATA.get(key, { range: new Headers({ range }) });
+  if (obj === null) return new Response("Not found", { status: 404 });
+  const headers = dataHeaders(obj);
+  const { offset = 0, length = obj.size - offset } = obj.range || {};
+  const contentRange = `bytes ${offset}-${offset + length - 1}/${obj.size}`;
+  const body = await obj.arrayBuffer();
+  headers.set("content-length", String(body.byteLength));
+
+  const stored = new Headers(headers);
+  stored.set("x-content-range", contentRange);
+  stored.set("cache-control", "public, max-age=86400");
+  ctx.waitUntil(cache.put(cacheKey, new Response(body, { status: 200, headers: stored })));
+
+  headers.set("content-range", contentRange);
+  headers.set("x-cache", "MISS");
+  return new Response(body, { status: 206, headers });
 }
 
 async function dataIndex(env) {
