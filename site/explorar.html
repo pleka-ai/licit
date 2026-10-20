@@ -28,7 +28,7 @@
         <header class="pg-head">
           <div>
             <h1>Explorar<span class="cursor">_</span></h1>
-            <p class="lead">SQL sobre 1,6 millones de licitaciones públicas desde 2017, organizadas como un modelo dimensional: entidades (licitaciones, lotes, órganos, empresas, CPV, lugares, documentos…) y los hechos que las miden (presupuestos, adjudicaciones, tramitación, cambios de estado…), unidos por sus columnas <code>_key</code>. La consulta se ejecuta en tu navegador con DuckDB y solo descarga los trozos de datos que necesita.</p>
+            <p class="lead">SQL sobre 1,6 millones de licitaciones públicas desde 2017: licitaciones, lotes, órganos, empresas, CPV, lugares y documentos, con sus presupuestos, adjudicaciones y tramitación, unidos por sus columnas <code>_key</code>. La consulta se ejecuta en tu navegador con DuckDB y solo descarga los trozos de datos que necesita.</p>
           </div>
           <span class="pg-status" id="status" data-state="loading"><i></i><b id="status-text">Descargando motor…</b></span>
         </header>
@@ -91,10 +91,11 @@
   <script type="module">
     import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm";
 
-    // The data is a dimensional model: entities (licitacion, lote, organo,
-    // empresa, cpv, lugar, documento…) and the facts that measure them
-    // (ciclo_licitacion, presupuesto_lote, adjudicacion…), joined by *_key. Aggregates answer instantly; facts scan millions of rows
-    // in the browser (several seconds the first time, faster once cached).
+    // Entities (licitacion, lote, organo, empresa, cpv, lugar, documento…) and
+    // activity (ciclo_licitacion, presupuesto_lote, adjudicacion…), joined by
+    // their *_key columns. Summaries answer instantly; activity tables scan
+    // millions of rows in the browser (several seconds the first time, faster
+    // once cached).
     const EXAMPLES = [
       {
         title: "Evolución anual",
@@ -193,8 +194,8 @@ ORDER BY ofertas_medias DESC;`,
         title: "Tiempo hasta adjudicar",
         desc: "Días desde la publicación, por tipo",
         speed: "millones de filas",
-        sql: `-- ciclo_licitacion es un snapshot acumulativo: una fila por licitación
--- con las fechas de cada hito de su tramitación.
+        sql: `-- ciclo_licitacion: una fila por licitación con las fechas de cada
+-- hito de su tramitación.
 SELECT l.tipo_contrato,
        count(*) AS adjudicadas,
        median(c.dias_hasta_adjudicacion) AS mediana_dias,
@@ -224,9 +225,14 @@ LIMIT 50;`,
       },
     ];
 
-    // Tables come from the model's manifest: name, role, description, columns.
+    // Tables come from the model's manifest: name, group, description, columns.
     const MODEL = "/data/parquet/modelo";
-    const ROLES = { hecho: "hecho", puente: "puente", dimension: "dimensión", agregado: "agregado" };
+    // Order and headings of the table list, by the manifest's group.
+    const GROUPS = {
+      resumenes: ["Resúmenes", "precalculadas, respuesta instantánea"],
+      entidades: ["Entidades", "licitaciones, lotes, órganos, empresas, CPV, lugares, documentos…"],
+      actividad: ["Actividad", "presupuestos, adjudicaciones, tramitación, cambios de estado…"],
+    };
     let TABLES = [];
 
     const KEYWORDS = new Set(("select from where group by order having limit offset as and or not in is null like ilike between " +
@@ -366,10 +372,10 @@ LIMIT 50;`,
       const index = await (await fetch(`${DATA}/data/index.json`, { cache: "no-store" })).json();
       versions = Object.fromEntries(index.ficheros.map((f) => [f.ruta, f.version]));
       const manifest = await (await fetch(fileUrl(`${MODEL}/manifest.json`))).json();
-      const order = Object.keys(ROLES);
+      const order = Object.keys(GROUPS);
       TABLES = Object.entries(manifest.tablas)
         .map(([name, t]) => ({ name, ...t }))
-        .sort((a, b) => order.indexOf(a.tipo) - order.indexOf(b.tipo) || b.rows - a.rows);
+        .sort((a, b) => order.indexOf(a.grupo) - order.indexOf(b.grupo) || a.name.localeCompare(b.name));
       for (const t of TABLES) tableNames.add(t.name);
       syncEditor();
       status("ready", `Listo · DuckDB ${await db.getVersion()}`);
@@ -398,7 +404,22 @@ LIMIT 50;`,
     function loadSchema() {
       const ul = $("schema");
       ul.replaceChildren();
+      let group = null;
       for (const t of TABLES) {
+        if (t.grupo !== group) {
+          group = t.grupo;
+          const [title, hint] = GROUPS[group] || [group, ""];
+          const head = document.createElement("li");
+          head.className = "pg-group";
+          const h = document.createElement("strong");
+          h.textContent = title;
+          const count = document.createElement("span");
+          count.textContent = TABLES.filter((x) => x.grupo === group).length;
+          const p = document.createElement("small");
+          p.textContent = hint;
+          head.append(h, count, p);
+          ul.appendChild(head);
+        }
         const li = document.createElement("li");
         const d = document.createElement("details");
         const s = document.createElement("summary");
@@ -409,7 +430,7 @@ LIMIT 50;`,
         name.textContent = t.name;
         name.onclick = (e) => { e.preventDefault(); insertAtCursor(t.name); };
         const small = document.createElement("small");
-        small.textContent = `${ROLES[t.tipo] || t.tipo} · ${Number(t.rows).toLocaleString("es-ES")} filas`;
+        small.textContent = `${Number(t.rows).toLocaleString("es-ES")} filas`;
         s.append(name, small);
         const list = document.createElement("ul");
         if (t.descripcion) {

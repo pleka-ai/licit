@@ -1,20 +1,19 @@
 MODEL (
   name modelo.adjudicacion,
   kind FULL,
-  tags (hecho),
   depends_on (modelo.licitacion, modelo.lote, modelo.empresa, modelo.organo, modelo.resultado, modelo.cpv, modelo.lugar),
   grain (licitacion_key, resultado_n, adjudicatario_n),
-  description 'Hecho transaccional: un resultado de adjudicación (de la licitación o de un lote) por adjudicatario, con las claves de todas sus dimensiones. Si hay varios adjudicatarios, los importes se reparten con `peso`, así que todas las medidas suman. Los resultados sin adjudicatario (desierto, desistimiento) llevan empresa -1.',
+  description 'Un resultado de adjudicación (de la licitación o de un lote) por adjudicatario. Si hay varios adjudicatarios, los importes se reparten con `peso`, así que sumar nunca cuenta dos veces. Los resultados sin adjudicatario (desierto, desistimiento) llevan empresa -1.',
   audits (
     not_null(columns := (licitacion_key, lote_key, resultado_n, adjudicatario_n, empresa_key, organo_key, resultado_key, cpv_key, lugar_key)),
     unique_combination_of_columns(columns := (licitacion_key, resultado_n, adjudicatario_n)),
-    clave_existe(columna := licitacion_key, dimension := modelo.licitacion),
-    clave_existe(columna := lote_key, dimension := modelo.lote),
-    clave_existe(columna := empresa_key, dimension := modelo.empresa),
-    clave_existe(columna := organo_key, dimension := modelo.organo),
-    clave_existe(columna := resultado_key, dimension := modelo.resultado),
-    clave_existe(columna := cpv_key, dimension := modelo.cpv),
-    clave_existe(columna := lugar_key, dimension := modelo.lugar)
+    clave_existe(columna := licitacion_key, tabla := modelo.licitacion),
+    clave_existe(columna := lote_key, tabla := modelo.lote),
+    clave_existe(columna := empresa_key, tabla := modelo.empresa),
+    clave_existe(columna := organo_key, tabla := modelo.organo),
+    clave_existe(columna := resultado_key, tabla := modelo.resultado),
+    clave_existe(columna := cpv_key, tabla := modelo.cpv),
+    clave_existe(columna := lugar_key, tabla := modelo.lugar)
   )
 );
 

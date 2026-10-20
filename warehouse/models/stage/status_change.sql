@@ -2,7 +2,7 @@ MODEL (
   name stage.status_change,
   kind VIEW,
   grain (entry_id, status_code, updated),
-  description 'Cada estado observado de un expediente y cuándo (unión de todos los snapshots).'
+  description 'Cada estado observado de un expediente y cuándo (unión de todas las versiones).'
 );
 
 SELECT

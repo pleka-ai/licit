@@ -1,9 +1,8 @@
 MODEL (
-  name agregado.resumen_organo,
+  name resumen.resumen_organo,
   kind FULL,
-  tags (agregado),
   grain organo_key,
-  description 'Agregado: actividad de cada órgano de contratación.'
+  description 'Resumen: actividad de cada órgano de contratación.'
 );
 
 SELECT

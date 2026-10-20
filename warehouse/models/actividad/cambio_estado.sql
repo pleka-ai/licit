@@ -1,16 +1,15 @@
 MODEL (
   name modelo.cambio_estado,
   kind FULL,
-  tags (hecho),
   depends_on (modelo.licitacion, modelo.estado, modelo.organo, modelo.cpv, modelo.lugar),
   grain (licitacion_key, momento, estado_key),
-  description 'Hecho transaccional: cada estado en que se ha observado una licitación, con cuánto tiempo permaneció en él. Recoge todas las versiones publicadas, no solo la última.',
+  description 'Cada estado en que se ha observado una licitación, con cuánto tiempo permaneció en él. Recoge todas las versiones publicadas, no solo la última.',
   audits (
     not_null(columns := (licitacion_key, estado_key, organo_key, cpv_key, lugar_key, momento, fecha)),
     unique_combination_of_columns(columns := (licitacion_key, momento, estado_key)),
-    clave_existe(columna := licitacion_key, dimension := modelo.licitacion),
-    clave_existe(columna := estado_key, dimension := modelo.estado),
-    clave_existe(columna := organo_key, dimension := modelo.organo)
+    clave_existe(columna := licitacion_key, tabla := modelo.licitacion),
+    clave_existe(columna := estado_key, tabla := modelo.estado),
+    clave_existe(columna := organo_key, tabla := modelo.organo)
   )
 );
 

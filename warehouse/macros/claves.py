@@ -1,12 +1,12 @@
-"""Surrogate keys for the dimensional model.
+"""Keys of the warehouse tables.
 
 Keys are deterministic: the same business key always yields the same BIGINT,
 so every daily rebuild, the D1 diff sync and the explorer agree on them
 without a key-mapping table. They keep 52 bits so they survive a round trip
 through JavaScript numbers (the Worker reads D1 rows as JS numbers); the
-uniqueness audits on every dimension and fact catch the unlikely collision.
-Reserved members follow the Kimball convention of never leaving a foreign key
-NULL.
+uniqueness audits on every table catch the unlikely collision.
+Keys 0 (unknown) and -1 (not applicable) are placeholder rows, so a key column
+is never NULL.
 """
 
 from __future__ import annotations
@@ -25,10 +25,10 @@ KEY_SHIFT = 12
 def clave(
     evaluator: MacroEvaluator, namespace: exp.Expression, *parts: exp.Expression
 ) -> exp.Expression:
-    """BIGINT surrogate key of ``namespace`` + business key ``parts``.
+    """BIGINT key of ``namespace`` + business key ``parts``.
 
     Returns NULL when every part is NULL, so callers can coalesce to a
-    reserved member.
+    placeholder row.
     """
     del evaluator
     joined = exp.func(
@@ -54,7 +54,7 @@ def clave(
 def clave_o(
     evaluator: MacroEvaluator, namespace: exp.Expression, *parts: exp.Expression
 ) -> exp.Expression:
-    """Like ``@clave`` but falls back to the 'desconocido' member (0)."""
+    """Like ``@clave`` but falls back to the 'desconocido' row (0)."""
     return exp.func(
         "coalesce", clave(evaluator, namespace, *parts), exp.Literal.number(DESCONOCIDO)
     )

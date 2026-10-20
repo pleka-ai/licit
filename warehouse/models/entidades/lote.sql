@@ -1,7 +1,6 @@
 MODEL (
   name modelo.lote,
   kind FULL,
-  tags (dimension),
   grain lote_key,
   description 'Lote de una licitación: la parte del objeto que se adjudica por separado. Las licitaciones sin lotes tienen un único lote "0" (es_objeto_unico). Su presupuesto está en presupuesto_lote y sus adjudicaciones en adjudicacion.',
   audits (

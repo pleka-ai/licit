@@ -1,9 +1,8 @@
 MODEL (
   name modelo.licitacion,
   kind FULL,
-  tags (dimension),
   grain licitacion_key,
-  description 'La licitación (expediente) como entidad: qué se contrata y cómo. Título, descripción, enlaces, estado actual, tipo y subtipo de contrato, procedimiento, tramitación, sistema, forma de presentación, regulación armonizada, financiación, duración y condiciones del pliego. SCD tipo 1: refleja la última versión publicada. Las medidas y los hitos están en los hechos (ciclo_licitacion, presupuesto_lote, adjudicacion…).',
+  description 'La licitación (expediente): qué se contrata y cómo. Título, descripción, enlaces, estado actual, tipo y subtipo de contrato, procedimiento, tramitación, sistema, forma de presentación, regulación armonizada, financiación, duración y condiciones del pliego, según su última versión publicada. Fechas e importes están en ciclo_licitacion, presupuesto_lote y adjudicacion.',
   audits (
     not_null(columns := (licitacion_key, id, placsp_id)),
     unique_values(columns := (licitacion_key)),

@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 
 _FIRST_FILE = 9001
 
-# Joined once: every licitacion with its dimension labels.
+# Joined once: every licitacion with its labels.
 _LIC = """
 CREATE TEMP VIEW lic AS
 SELECT f.*, l.tipo_contrato, l.tipo_contrato_codigo, l.procedimiento,

@@ -2,7 +2,7 @@ test_adjudicacion_reparte_importe_entre_adjudicatarios:
   model: modelo.adjudicacion
   description: Two winners share one result, a deserted lot gets the 'sin adjudicatario' member, and lot budgets come from the lot.
   inputs:
-    # Dimensions are only read by the referential-integrity audits.
+    # Only read by the key audits.
     modelo.empresa: {rows: [{empresa_key: -1}]}
     modelo.organo: {rows: [{organo_key: 0}]}
     modelo.resultado: {rows: [{resultado_key: 0}]}

@@ -1,9 +1,8 @@
 MODEL (
-  name agregado.resumen_mensual,
+  name resumen.resumen_mensual,
   kind FULL,
-  tags (agregado),
   grain (mes, tipo_contrato),
-  description 'Agregado: licitaciones e importes por mes de publicación y tipo de contrato.'
+  description 'Resumen: licitaciones e importes por mes de publicación y tipo de contrato.'
 );
 
 SELECT

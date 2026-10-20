@@ -1,7 +1,6 @@
 MODEL (
   name modelo.requisito,
   kind FULL,
-  tags (dimension),
   grain requisito_key,
   description 'Requisito para participar en una licitación: solvencia técnica o económica (con su umbral, años de experiencia o plantilla) o declaración exigida.',
   audits (

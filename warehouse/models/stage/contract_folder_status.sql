@@ -2,7 +2,7 @@ MODEL (
   name stage.contract_folder_status,
   kind VIEW,
   grain entry_id,
-  description 'Expediente (snapshot más reciente) tal como lo publica PLACSP, tipado y limpio.'
+  description 'Expediente (versión más reciente) tal como lo publica PLACSP, tipado y limpio.'
 );
 
 SELECT

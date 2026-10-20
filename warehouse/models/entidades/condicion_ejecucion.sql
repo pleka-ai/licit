@@ -1,7 +1,6 @@
 MODEL (
   name modelo.condicion_ejecucion,
   kind FULL,
-  tags (dimension),
   grain condicion_key,
   description 'Condición especial de ejecución de una licitación (social, medioambiental, innovación…).',
   audits (

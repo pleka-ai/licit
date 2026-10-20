@@ -1,11 +1,11 @@
--- D1 schema: the public API's slice of the dimensional model (warehouse/).
+-- D1 schema: the tables of the data model (warehouse/) the public API reads.
 -- Idempotent; applied by scripts/d1-load.sh before every load. Rows come from
 -- the model's Parquet through export.d1 (full load or daily diff).
 --
--- Dimensions carry only real members: the model's reserved members (0/-1)
--- are not loaded, so a LEFT JOIN yields NULL where the API returns null.
+-- The model's placeholder rows (keys 0/-1) are not loaded, so a LEFT JOIN
+-- yields NULL where the API returns null.
 
--- ---------------------------------------------------------------- dimensions
+-- --------------------------------------------------------------- entidades
 
 CREATE TABLE IF NOT EXISTS estado (
   estado_key INTEGER PRIMARY KEY,
@@ -96,10 +96,10 @@ CREATE TRIGGER IF NOT EXISTS empresa_au AFTER UPDATE OF nombre ON empresa BEGIN
   INSERT INTO empresa_fts (rowid, nombre) VALUES (new.empresa_key, new.nombre);
 END;
 
--- --------------------------------------------------------------------- facts
+-- -------------------------------------------------------------- licitaciones
 
--- The licitacion entity joined to its ciclo_licitacion fact: one row per
--- licitación, as the API serves it. rid follows load order, which
+-- licitacion joined to its ciclo_licitacion row: one row per licitación, as
+-- the API serves it. rid follows load order, which
 -- is chronological (full loads are sorted by fecha_publicacion and new rows
 -- are appended), so "newest first" is a reverse rowid scan. Single-column
 -- indexes end in rowid, so equality filters also come out newest-first.
@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS licitacion (
   lugar_key INTEGER NOT NULL,
   adjudicatario_key INTEGER NOT NULL,
   resultado_key INTEGER NOT NULL,
-  -- Attributes of the licitacion dimension; the two codes are the API's most
+  -- From the licitacion table; the two codes are the API's most
   -- used filters, single-index equality lookups in rowid order (no sort).
   tipo_contrato_codigo TEXT,
   tipo_contrato TEXT,
@@ -157,8 +157,8 @@ CREATE INDEX IF NOT EXISTS idx_lic_importe ON licitacion (presupuesto_sin_iva);
 
 -- Full-text index over the title and the names of the contracting party and
 -- the main winner. A plain (not external-content) FTS5 table, so stale rows
--- can be deleted by rowid; triggers resolve the names from the dimensions,
--- which export.d1 always loads before the facts.
+-- can be deleted by rowid; triggers resolve the names from organo and
+-- empresa, which export.d1 always loads before licitacion.
 CREATE VIRTUAL TABLE IF NOT EXISTS licitacion_fts USING fts5(
   titulo, organo, adjudicatario,
   tokenize='unicode61 remove_diacritics 2'
@@ -213,8 +213,8 @@ CREATE TABLE IF NOT EXISTS cambio_estado (
 
 -- ----------------------------------------------------------- API projection
 
--- The flat licitacion the API has always returned, resolved through the
--- dimensions. SQLite flattens the view into each query, so filters on the
+-- The flat licitacion the API has always returned, with every key resolved
+-- to its labels. SQLite flattens the view into each query, so filters on the
 -- key columns still use licitacion's indexes and its rowid order.
 CREATE VIEW IF NOT EXISTS licitacion_api AS
 SELECT

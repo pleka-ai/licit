@@ -1,9 +1,8 @@
 MODEL (
   name modelo.calendario,
   kind FULL,
-  tags (dimension),
   grain fecha,
-  description 'Dimensión de fechas. Todas las fechas del modelo (publicación, plazo, adjudicación, formalización…) la usan como rol; la clave es la propia fecha.',
+  description 'Un día por fila, con año, trimestre, mes, semana y día de la semana. Todas las fechas del modelo se cruzan con esta tabla por la propia fecha.',
   audits (
     not_null(columns := (fecha)),
     unique_values(columns := (fecha))

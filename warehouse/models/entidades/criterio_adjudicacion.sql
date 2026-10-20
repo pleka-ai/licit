@@ -1,7 +1,6 @@
 MODEL (
   name modelo.criterio_adjudicacion,
   kind FULL,
-  tags (dimension),
   grain criterio_key,
   description 'Criterio de adjudicación de una licitación (lote_numero NULL) o de un lote: tipo (automático o juicio de valor), subtipo (precio, calidad…), descripción y ponderación.',
   audits (

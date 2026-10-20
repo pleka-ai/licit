@@ -1,9 +1,8 @@
 MODEL (
   name modelo.empresa,
   kind FULL,
-  tags (dimension),
   grain empresa_key,
-  description 'Empresa adjudicataria identificada por NIF (o por nombre si PLACSP no da NIF). SCD tipo 1: nombre y domicilio de su adjudicación más reciente.',
+  description 'Empresa adjudicataria identificada por NIF (o por nombre si PLACSP no da NIF), con el nombre y domicilio de su adjudicación más reciente.',
   audits (
     not_null(columns := (empresa_key, nombre)),
     unique_values(columns := (empresa_key)),

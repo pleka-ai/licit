@@ -1,4 +1,4 @@
-test_ciclo_snapshot_acumulativo:
+test_ciclo_hitos_y_totales:
   model: modelo.ciclo_licitacion
   description: Milestones come from the status timeline and the awards; amounts add up across lots; and the main winner is the one of the latest award.
   inputs:

@@ -1,6 +1,6 @@
 test_licitacion_entidad:
   model: modelo.licitacion
-  description: The licitación dimension keeps the public id formula (md5('licitacion:' || entry_id)) and resolves CODICE codes to labels, falling back to the code.
+  description: The licitacion table keeps the public id formula (md5('licitacion:' || entry_id)) and resolves CODICE codes to labels, falling back to the code.
   inputs:
     stage.contract_folder_status:
       rows:

@@ -1,7 +1,6 @@
 MODEL (
   name modelo.lugar,
   kind FULL,
-  tags (dimension),
   grain lugar_key,
   description 'Territorio NUTS con sus niveles aplanados (país, macrorregión, comunidad autónoma, provincia).',
   audits (

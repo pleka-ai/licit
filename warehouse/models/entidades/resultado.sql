@@ -1,9 +1,8 @@
 MODEL (
   name modelo.resultado,
   kind FULL,
-  tags (dimension),
   grain resultado_key,
-  description 'Resultado de un procedimiento o lote (adjudicado, desierto, desistimiento…).',
+  description 'Resultado de una licitación o lote (adjudicado, desierto, desistimiento…).',
   audits (
     not_null(columns := (resultado_key, codigo)),
     unique_values(columns := (resultado_key))

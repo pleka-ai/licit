@@ -2,7 +2,7 @@ MODEL (
   name stage.expediente_claves,
   kind VIEW,
   grain licitacion_key,
-  description 'Claves de las dimensiones de cada licitación, compartidas por todos sus hechos para que cada uno lleve todas las claves.'
+  description 'Claves de órgano, estado, CPV, lugar y fecha de publicación de cada licitación, resueltas una vez y copiadas por todas las tablas que cuelgan de ella.'
 );
 
 WITH cpv_principal AS (
