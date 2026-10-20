@@ -112,10 +112,14 @@ LIMIT 50;`],
       URL.revokeObjectURL(workerUrl);
       conn = await db.connect();
 
-      // One compacted, deduplicated file per table (rebuilt daily by CI).
+      // One compacted, deduplicated file per table (rebuilt daily by CI),
+      // requested by version so a new upload never mixes with cached ranges.
       const names = ["licitacion", "lote", "adjudicacion", "cpv", "empresa"];
+      const index = await (await fetch("/data/index.json", { cache: "no-store" })).json();
+      const version = Object.fromEntries(index.ficheros.map((f) => [f.ruta, f.version]));
       for (const t of names) {
-        const src = `${location.origin}/data/parquet/todo/${t}.parquet`;
+        const ruta = `/data/parquet/todo/${t}.parquet`;
+        const src = `${location.origin}${ruta}?v=${version[ruta] || Date.now()}`;
         await conn.query(`CREATE VIEW ${t} AS SELECT * FROM read_parquet('${src}')`);
       }
       $("tables").textContent = names.length ? `Tablas: ${names.join(", ")}` : "Aún no hay datos publicados.";
