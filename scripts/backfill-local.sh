@@ -70,9 +70,7 @@ estado() {
   rm -rf "$OUT/raw/reciente"
   uv run python -m export.raw "$OUT/raw/reciente"
   aws s3 cp "$OUT/raw/reciente" "$BUCKET/parquet/raw/reciente/" --recursive --only-show-errors
-  docker exec "$PG" pg_dump -U licit -Fc -Z 9 --no-owner \
-    --exclude-table-data=api_user --exclude-table-data=api_key \
-    --exclude-table-data=audit_log -d licit_estado -f /tmp/state.dump
+  docker exec "$PG" pg_dump -U licit -Fc -Z 9 --no-owner -d licit_estado -f /tmp/state.dump
   docker cp "$PG:/tmp/state.dump" "$OUT/state.dump"
   aws s3 cp "$OUT/state.dump" "$BUCKET/state/licit.dump" --only-show-errors
   echo "[estado] done $(date +%T) dump=$(du -h "$OUT/state.dump" | cut -f1)"
