@@ -29,7 +29,16 @@ _MODEL_COLUMNS: dict[str, str] = {
         "organo_key BIGINT, id VARCHAR, nombre VARCHAR, nif VARCHAR, tipo VARCHAR"
     ),
     "resumen_organo": "organo_key BIGINT, licitaciones BIGINT",
-    "empresa": "empresa_key BIGINT, nif VARCHAR, nombre VARCHAR",
+    "empresa": "empresa_key BIGINT, nif VARCHAR, nombre VARCHAR, sociedad_key BIGINT",
+    "sociedad": (
+        "sociedad_key BIGINT, hoja VARCHAR, nombre VARCHAR, forma_juridica VARCHAR,"
+        " provincia VARCHAR, fecha_constitucion DATE, estado VARCHAR, capital DOUBLE,"
+        " domicilio VARCHAR, fecha_extincion DATE, fecha_ultima_publicacion DATE"
+    ),
+    "cargo_vigente": (
+        "sociedad_key BIGINT, persona_key BIGINT, cargo_tipo VARCHAR, persona VARCHAR,"
+        " cargo VARCHAR, desde DATE, es_persona_juridica BOOLEAN"
+    ),
     "resumen_empresa": "empresa_key BIGINT, contratos BIGINT",
     # licitacion and ciclo_licitacion; test rows list both
     # tables' columns together and _model splits them.
@@ -74,8 +83,31 @@ _BASE: dict[str, list[dict[str, Any]]] = {
     ],
     "resumen_organo": [{"organo_key": 7, "licitaciones": 2}],
     "empresa": [
-        {"empresa_key": -1, "nombre": "Sin adjudicatario"},
-        {"empresa_key": 8, "nif": "B1", "nombre": "Datos SL"},
+        {"empresa_key": -1, "nombre": "Sin adjudicatario", "sociedad_key": -1},
+        {"empresa_key": 8, "nif": "B1", "nombre": "Datos SL", "sociedad_key": 30},
+    ],
+    "sociedad": [
+        {"sociedad_key": -1, "nombre": "Sin datos registrales"},
+        {"sociedad_key": 30, "hoja": "M 1", "nombre": "DATOS SL", "estado": "Activa"},
+        {"sociedad_key": 31, "hoja": "M 2", "nombre": "AJENA SL", "estado": "Activa"},
+    ],
+    "cargo_vigente": [
+        {
+            "sociedad_key": 30,
+            "persona_key": 40,
+            "cargo_tipo": "Administrador único",
+            "persona": "PEREZ ANA",
+            "cargo": "Adm. Unico",
+            "desde": "2020-01-01",
+        },
+        {
+            "sociedad_key": 31,
+            "persona_key": 41,
+            "cargo_tipo": "Consejero",
+            "persona": "GOMEZ LUIS",
+            "cargo": "Consejero",
+            "desde": "2020-01-01",
+        },
     ],
     "resumen_empresa": [{"empresa_key": 8, "contratos": 1}],
     "licitacion": [
@@ -212,6 +244,14 @@ def test_full_load_serves_the_flat_api_view(
         ),
         # Placeholder rows are not loaded: the API sees NULLs, as before.
         ("l-11", None, None, "Servicios", "En plazo", None, None, "72000000", None, 0),
+    ]
+    # Only the register entries of companies that won tenders reach D1.
+    assert db.execute("SELECT nombre FROM sociedad").fetchall() == [("DATOS SL",)]
+    assert db.execute(
+        "SELECT empresa_key, sociedad_key FROM empresa_registro"
+    ).fetchall() == [(8, 30)]
+    assert db.execute("SELECT persona FROM cargo_vigente").fetchall() == [
+        ("PEREZ ANA",)
     ]
     # rid follows fecha_publicacion.
     assert [r[0] for r in db.execute("SELECT id FROM licitacion ORDER BY rid")] == [

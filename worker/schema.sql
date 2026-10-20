@@ -96,6 +96,39 @@ CREATE TRIGGER IF NOT EXISTS empresa_au AFTER UPDATE OF nombre ON empresa BEGIN
   INSERT INTO empresa_fts (rowid, nombre) VALUES (new.empresa_key, new.nombre);
 END;
 
+-- Registry data from the BORME, for the companies that won tenders only.
+CREATE TABLE IF NOT EXISTS sociedad (
+  sociedad_key INTEGER PRIMARY KEY,
+  hoja TEXT,
+  nombre TEXT,
+  forma_juridica TEXT,
+  provincia TEXT,
+  fecha_constitucion TEXT,
+  estado TEXT,
+  capital REAL,
+  domicilio TEXT,
+  fecha_extincion TEXT,
+  fecha_ultima_publicacion TEXT
+);
+
+-- Winner -> its company in the register (a table, not an empresa column, so
+-- this schema stays idempotent on existing databases).
+CREATE TABLE IF NOT EXISTS empresa_registro (
+  empresa_key INTEGER PRIMARY KEY,
+  sociedad_key INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cargo_vigente (
+  sociedad_key INTEGER NOT NULL,
+  persona_key INTEGER NOT NULL,
+  cargo_tipo TEXT NOT NULL,
+  persona TEXT,
+  cargo TEXT,
+  desde TEXT,
+  es_persona_juridica INTEGER,
+  PRIMARY KEY (sociedad_key, persona_key, cargo_tipo)
+) WITHOUT ROWID;
+
 -- -------------------------------------------------------------- licitaciones
 
 -- licitacion joined to its ciclo_licitacion row: one row per licitación, as

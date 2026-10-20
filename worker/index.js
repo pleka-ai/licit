@@ -536,6 +536,7 @@ async function perfil(env, col, value, url) {
   return {
     id: key,
     nombre: s.nombre,
+    ...(empresa ? { registro: await registro(env, key) } : {}),
     stats: {
       contratos: s.contratos,
       importe_total: round2(s.importe_total),
@@ -546,6 +547,32 @@ async function perfil(env, col, value, url) {
     },
     licitaciones: rows.results.slice(0, limit).map(resumen),
     cursor_siguiente: rows.results.length > limit ? encodeCursor(offset + limit) : null,
+  };
+}
+
+// The company's entry in the Mercantile Registry (BORME), when one of its
+// names in PLACSP matches a single registered company; null otherwise.
+async function registro(env, nif) {
+  const sociedad = `(SELECT r.sociedad_key FROM empresa e JOIN empresa_registro r ON r.empresa_key = e.empresa_key
+    WHERE e.nif = ?1 ORDER BY e.contratos DESC LIMIT 1)`;
+  const [soc, cargos] = await env.DB.batch([
+    env.DB.prepare(
+      `SELECT nombre AS sociedad, hoja, forma_juridica, provincia, fecha_constitucion, estado,
+              capital, domicilio, fecha_extincion, fecha_ultima_publicacion AS ultima_publicacion
+       FROM sociedad WHERE sociedad_key = ${sociedad}`,
+    ).bind(nif),
+    env.DB.prepare(
+      `SELECT persona AS nombre, cargo_tipo AS cargo, desde, es_persona_juridica = 1 AS persona_juridica
+       FROM cargo_vigente WHERE sociedad_key = ${sociedad}
+       ORDER BY cargo_tipo, desde DESC LIMIT 25`,
+    ).bind(nif),
+  ]);
+  const r = soc.results[0];
+  if (!r) return null;
+  return {
+    ...r,
+    fuente: "BORME",
+    cargos_vigentes: cargos.results.map((c) => ({ ...c, persona_juridica: Boolean(c.persona_juridica) })),
   };
 }
 
@@ -739,6 +766,20 @@ function table(rows) {
   return [head, ...body].join("\n");
 }
 
+function registroMd(r) {
+  if (!r) return "";
+  const cargos = r.cargos_vigentes.map((c) => `| ${cell(c.cargo)} | ${cell(c.nombre)} | ${day(c.desde)} |`);
+  return [
+    "",
+    "## Registro Mercantil (BORME)",
+    "",
+    `- **Sociedad:** ${cell(r.sociedad)} · hoja ${cell(r.hoja)} (${cell(r.provincia)})`,
+    `- **Constitución:** ${day(r.fecha_constitucion)} · **Situación:** ${cell(r.estado)} · **Capital:** ${money(r.capital)}`,
+    "",
+    ...(cargos.length ? ["| Cargo | Nombre | Desde |", "|---|---|---|", ...cargos, ""] : []),
+  ].join("\n");
+}
+
 function toMarkdown(kind, d) {
   switch (kind) {
     case "busqueda":
@@ -759,7 +800,7 @@ function toMarkdown(kind, d) {
         "",
       ].join("\n");
     case "perfil":
-      return `# ${cell(d.nombre)}\n\n- **Contratos:** ${d.stats.contratos}\n- **Importe total:** ${money(d.stats.importe_total)}\n- **Baja media:** ${d.stats.baja_media_pct == null ? DASH : `${d.stats.baja_media_pct}%`}\n\n## Licitaciones\n\n${table(d.licitaciones)}\n`;
+      return `# ${cell(d.nombre)}\n\n- **Contratos:** ${d.stats.contratos}\n- **Importe total:** ${money(d.stats.importe_total)}\n- **Baja media:** ${d.stats.baja_media_pct == null ? DASH : `${d.stats.baja_media_pct}%`}\n${registroMd(d.registro)}\n## Licitaciones\n\n${table(d.licitaciones)}\n`;
     case "catalogo":
       return `# Catálogo: ${d.tipo}\n\n| Valor | N |\n|---|---|\n${d.valores.map((v) => `| ${cell(v.valor)} | ${v.n} |`).join("\n")}\n`;
     case "entidades":

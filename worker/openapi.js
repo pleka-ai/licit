@@ -306,6 +306,11 @@ export const OPENAPI = {
         properties: {
           id: { type: "string" },
           nombre: { type: "string" },
+          registro: {
+            description:
+              "Solo en /v1/empresa: su sociedad en el Registro Mercantil según el BORME, cuando alguno de sus nombres en PLACSP coincide con una sola sociedad; null si no.",
+            oneOf: [ref("Registro"), { type: "null" }],
+          },
           stats: {
             type: "object",
             properties: {
@@ -320,6 +325,36 @@ export const OPENAPI = {
           },
           licitaciones: { type: "array", items: ref("LicitacionResumen") },
           cursor_siguiente: nullable("string"),
+        },
+      },
+      Registro: {
+        type: "object",
+        properties: {
+          sociedad: { type: "string" },
+          hoja: nullable("string", { description: "Hoja registral (registro provincial y número)." }),
+          forma_juridica: nullable("string"),
+          provincia: nullable("string"),
+          fecha_constitucion: nullable("string", { format: "date" }),
+          estado: nullable("string", {
+            description: "Activa (sin disolución ni extinción publicadas), Disuelta, Extinguida o En concurso.",
+          }),
+          capital: nullable("number"),
+          domicilio: nullable("string"),
+          fecha_extincion: nullable("string", { format: "date" }),
+          ultima_publicacion: nullable("string", { format: "date" }),
+          fuente: { type: "string", enum: ["BORME"] },
+          cargos_vigentes: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                nombre: { type: "string" },
+                cargo: { type: "string" },
+                desde: { type: "string", format: "date" },
+                persona_juridica: { type: "boolean" },
+              },
+            },
+          },
         },
       },
       Catalogo: {

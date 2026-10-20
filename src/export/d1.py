@@ -84,6 +84,16 @@ D1_TABLES: dict[str, D1Table] = {
         " FROM empresa e LEFT JOIN resumen_empresa r USING (empresa_key)"
         " WHERE e.empresa_key > 0",
     ),
+    # BORME registry data, only for companies that won tenders: the whole
+    # register would not fit in D1.
+    "sociedad": D1Table(
+        ("sociedad_key",),
+        "SELECT s.sociedad_key, s.hoja, s.nombre, s.forma_juridica, s.provincia,"
+        " s.fecha_constitucion, s.estado, s.capital, s.domicilio, s.fecha_extincion,"
+        " s.fecha_ultima_publicacion FROM sociedad s"
+        " WHERE s.sociedad_key > 0"
+        " AND s.sociedad_key IN (SELECT sociedad_key FROM empresa)",
+    ),
     "licitacion": D1Table(
         ("licitacion_key",),
         # The API's row: licitacion joined to its ciclo_licitacion row.
@@ -111,9 +121,21 @@ D1_TABLES: dict[str, D1Table] = {
         ("licitacion_key", "momento", "estado_key"),
         "SELECT licitacion_key, momento, estado_key FROM cambio_estado",
     ),
+    "empresa_registro": D1Table(
+        ("empresa_key",),
+        "SELECT empresa_key, sociedad_key FROM empresa"
+        " WHERE empresa_key > 0 AND sociedad_key > 0",
+    ),
+    "cargo_vigente": D1Table(
+        ("sociedad_key", "persona_key", "cargo_tipo"),
+        "SELECT c.sociedad_key, c.persona_key, c.cargo_tipo, c.persona, c.cargo,"
+        " c.desde, c.es_persona_juridica FROM cargo_vigente c"
+        " WHERE c.sociedad_key IN"
+        " (SELECT sociedad_key FROM empresa WHERE sociedad_key > 0)",
+    ),
 }
 
-_LOOKUPS = ("estado", "resultado", "cpv", "lugar", "organo", "empresa")
+_LOOKUPS = ("estado", "resultado", "cpv", "lugar", "organo", "empresa", "sociedad")
 
 
 def sql_literal(value: Any) -> str:
