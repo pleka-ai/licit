@@ -145,9 +145,11 @@ def upsert_statement(
 ) -> str:
     """Multi-row upsert keyed on the table's natural key (keeps licitacion rid)."""
     sets = ", ".join(f"{c} = excluded.{c}" for c in cols if c not in spec.key)
+    # Tables whose columns are all key (cambio_estado) have nothing to update.
+    action = f"DO UPDATE SET {sets}" if sets else "DO NOTHING"
     return (
         f"INSERT INTO {table} ({', '.join(cols)}) VALUES\n{_values(rows)}\n"
-        f"ON CONFLICT({', '.join(spec.key)}) DO UPDATE SET {sets};"
+        f"ON CONFLICT({', '.join(spec.key)}) {action};"
     )
 
 

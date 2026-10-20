@@ -6,9 +6,13 @@ name: ETL
 # is rebuilt from it and published to R2 (explorer) and D1 (API).
 # Archived years (2017+) are loaded by historico.yml.
 #
-# Modes (workflow_dispatch):
-#   diario  — restore state, read live feeds, prune, publish (default/cron)
-#   semilla — restore state, ingest yearly archives for `anios`, publish
+# Each stage leaves its output in R2, so a failure is retried from there:
+#   diario   — restore state, read live feeds, prune, export, publish (cron)
+#   semilla  — restore state, ingest yearly archives for `anios`, export, publish
+#   publicar — no Postgres: rebuild the model from parquet/raw/todo and sync D1
+#
+# The pipeline steps are scripts (scripts/modelo.sh, d1-sql.sh, d1-load.sh)
+# that the test workflow also runs end to end.
 
 on:
   schedule:
@@ -17,7 +21,7 @@ on:
     inputs:
       modo:
         type: choice
-        options: [diario, semilla]
+        options: [diario, semilla, publicar]
         default: diario
       anios:
         description: "Años para semilla, separados por espacio"
@@ -58,7 +62,8 @@ jobs:
       AWS_ENDPOINT_URL: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      BUCKET: s3://licit-data
+      # Point both at a test bucket path and database to rehearse a migration.
+      BUCKET: ${{ vars.R2_BUCKET || 's3://licit-data' }}
       D1_DATABASE: ${{ vars.D1_DATABASE || 'licit-api' }}
     steps:
       - uses: actions/checkout@v4
@@ -76,10 +81,14 @@ jobs:
 
       - run: uv python install 3.12 && uv sync --frozen
 
+      # ------------------------------------------------- ingest (Postgres)
+
       - name: Install Postgres client
+        if: env.MODO != 'publicar'
         run: sudo apt-get install -y -qq postgresql-client > /dev/null
 
       - name: Restore state from R2
+        if: env.MODO != 'publicar'
         run: |
           if aws s3 cp "$BUCKET/state/licit.dump" state.dump --only-show-errors; then
             pg_restore --no-owner --no-privileges -d "$DATABASE_URL" state.dump
@@ -89,55 +98,65 @@ jobs:
           fi
 
       - name: Apply schema
+        if: env.MODO != 'publicar'
         run: ./schema/apply.sh "$DATABASE_URL"
 
       - name: Ingest
+        if: env.MODO != 'publicar'
         run: |
+          # shellcheck disable=SC2086  # one argument per year
           case "$MODO" in
             diario)
               uv run python -m etl.handlers.feed_reader
               uv run python -m etl.handlers.catalog_updater ;;
-            *)
+            semilla)
               uv run python -m etl.handlers.feed_reader --seed --years $ANIOS ;;
           esac
 
       - name: Prune to rolling window
+        if: env.MODO != 'publicar'
         run: uv run python -m export.prune
 
       - name: Export raw window
+        if: env.MODO != 'publicar'
         run: |
           uv run python -m export.raw out/raw/reciente
           aws s3 cp out/raw/reciente "$BUCKET/parquet/raw/reciente/" --recursive --only-show-errors
 
-      - name: Compact raw history
-        # todo = previous todo + today's window, so folders pruned from the
-        # Postgres window are never lost. Later sources win ties.
+      - name: Save state to R2
+        # Right after the export: a failure while publishing keeps today's
+        # ingestion, and `publicar` retries from parquet/raw.
+        if: env.MODO != 'publicar'
         run: |
-          aws s3 cp "$BUCKET/parquet/raw/todo/" out/raw/todo-prev --recursive --only-show-errors
-          srcs=out/raw/reciente
-          if [ -f out/raw/todo-prev/contract_folder_status.parquet ]; then
-            srcs="out/raw/todo-prev $srcs"
-          fi
-          uv run python -m export.compact out/raw/todo $srcs
-          aws s3 cp out/raw/todo "$BUCKET/parquet/raw/todo/" --recursive --only-show-errors
+          pg_dump -Fc -Z 9 --no-owner -d "$DATABASE_URL" -f state.dump
+          ls -lh state.dump
+          aws s3 cp state.dump "$BUCKET/state/licit.dump" --only-show-errors
+
+      # ------------------------------------------------ publish (no Postgres)
 
       - name: Build data model
+        # todo = previous todo + today's window, so folders pruned from the
+        # Postgres window are never lost. Later sources win ties.
+        env:
+          DATABASE_URL: ""
         run: |
-          uv run python -m export.modelo out/modelo out/raw/todo
+          aws s3 cp "$BUCKET/parquet/raw/todo/" out/raw/todo-prev --recursive --only-show-errors
+          srcs=""
+          [ -f out/raw/todo-prev/contract_folder_status.parquet ] && srcs="out/raw/todo-prev"
+          [ -f out/raw/reciente/contract_folder_status.parquet ] && srcs="$srcs out/raw/reciente"
+          [ -n "$srcs" ] || { echo "No raw data in $BUCKET/parquet/raw"; exit 1; }
+          # shellcheck disable=SC2086
+          scripts/modelo.sh out/raw/todo out/modelo $srcs
+          aws s3 cp out/raw/todo "$BUCKET/parquet/raw/todo/" --recursive --only-show-errors
           aws s3 cp out/modelo "$BUCKET/parquet/modelo/" --recursive --only-show-errors
 
       - name: Sync D1
         # state/modelo-d1 is the model D1 last received (the diff baseline);
         # it only moves after a successful load. Without it: full load.
+        env:
+          DATABASE_URL: ""
         run: |
           aws s3 cp "$BUCKET/state/modelo-d1/" out/modelo-d1 --recursive --only-show-errors
-          uv run python -m export.d1 out/d1 out/modelo out/modelo-d1
-          uv run python -m export.derived out/d1 out/modelo
-          ./scripts/d1-load.sh out/d1
+          scripts/d1-sql.sh out/d1 out/modelo out/modelo-d1
+          scripts/d1-load.sh out/d1
           aws s3 sync out/modelo "$BUCKET/state/modelo-d1/" --delete --only-show-errors
-
-      - name: Save state to R2
-        run: |
-          pg_dump -Fc -Z 9 --no-owner -d "$DATABASE_URL" -f state.dump
-          ls -lh state.dump
-          aws s3 cp state.dump "$BUCKET/state/licit.dump" --only-show-errors
