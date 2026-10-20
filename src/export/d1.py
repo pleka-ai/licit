@@ -12,9 +12,14 @@ Lookup tables (organo, empresa, cpv…) are written before the tables that
 reference them (the full-text triggers on licitacion read names from organo
 and empresa) and deleted after them.
 
+Every run also writes ``<out_dir>/baseline/``: the D1 tables exactly as this
+run left them (``d1_baseline.json`` marks it). The next run diffs against that
+baseline, which is a small fraction of the model; a previous model directory
+(the former baseline) still works.
+
 Usage::
 
-    PYTHONPATH=src uv run python -m export.d1 <out_dir> <modelo_dir> [<prev_modelo_dir>]
+    PYTHONPATH=src uv run python -m export.d1 <out_dir> <modelo_dir> [<prev_dir>]
     scripts/d1-load.sh <out_dir>
 """
 
@@ -135,6 +140,9 @@ D1_TABLES: dict[str, D1Table] = {
     ),
 }
 
+BASELINE = "baseline"
+BASELINE_MARKER = "d1_baseline.json"
+
 _LOOKUPS = ("estado", "resultado", "cpv", "lugar", "organo", "empresa", "sociedad")
 
 
@@ -236,6 +244,44 @@ class _Writer:
         self._lines, self._rows = [], 0
 
 
+def _previous(con: duckdb.DuckDBPyConnection, prev_dir: Path) -> None:
+    """``previo_<table>``: what D1 holds, from a baseline or a whole model.
+
+    A table the previous run did not have (a new D1 table, or a model that
+    predates a column) is empty, so all its rows are written.
+    """
+    baseline = (prev_dir / BASELINE_MARKER).exists()
+    if not baseline:
+        _attach(con, "previo", prev_dir)
+    for table, spec in D1_TABLES.items():
+        path = prev_dir / f"{table}.parquet"
+        try:
+            if baseline:
+                quoted = str(path).replace("'", "''")
+                source = f"SELECT * FROM read_parquet('{quoted}')"
+            else:
+                con.execute("SET schema = 'previo'")
+                source = spec.query
+            con.execute(f"CREATE TABLE main.previo_{table} AS {source}")
+        except (duckdb.CatalogException, duckdb.BinderException, duckdb.IOException):
+            con.execute(
+                f"CREATE TABLE main.previo_{table} AS FROM main.nuevo_{table} LIMIT 0"
+            )
+        finally:
+            con.execute("SET schema = 'main'")
+
+
+def _write_baseline(con: duckdb.DuckDBPyConnection, path: Path) -> None:
+    """Save the D1 tables of this run as the next run's diff baseline."""
+    path.mkdir(parents=True, exist_ok=True)
+    for table in D1_TABLES:
+        quoted = str(path / f"{table}.parquet").replace("'", "''")
+        con.execute(
+            f"COPY main.nuevo_{table} TO '{quoted}' (FORMAT parquet, COMPRESSION zstd)"
+        )
+    (path / BASELINE_MARKER).write_text('{"tablas": ' + str(len(D1_TABLES)) + "}\n")
+
+
 def build(
     out_dir: Path, modelo_dir: Path, prev_dir: Path | None, settings: Settings
 ) -> dict[str, dict[str, int]]:
@@ -244,19 +290,17 @@ def build(
     con = duckdb.connect()
     con.execute("SET TimeZone = 'UTC'")
     _attach(con, "nuevo", modelo_dir)
+    con.execute("SET schema = 'nuevo'")
+    for table, spec in D1_TABLES.items():
+        con.execute(f"CREATE TABLE main.nuevo_{table} AS {spec.query}")
+    con.execute("SET schema = 'main'")
     if prev_dir is not None:
-        _attach(con, "previo", prev_dir)
+        _previous(con, prev_dir)
+    _write_baseline(con, out_dir / BASELINE)
 
     writer = _Writer(out_dir, settings.d1_chunk_rows)
     per_stmt = settings.d1_rows_per_insert
     summary: dict[str, dict[str, int]] = {}
-
-    sides = ("nuevo", "previo") if prev_dir is not None else ("nuevo",)
-    for side in sides:
-        con.execute(f"SET schema = '{side}'")
-        for table, spec in D1_TABLES.items():
-            con.execute(f"CREATE TABLE main.{side}_{table} AS {spec.query}")
-    con.execute("SET schema = 'main'")
 
     def deletes(table: str) -> None:
         if prev_dir is None:
@@ -315,13 +359,11 @@ def main(argv: list[str] | None = None) -> None:
             build(Path(out_dir), Path(modelo_dir), None, Settings())
         case [out_dir, modelo_dir, prev_dir]:
             prev = Path(prev_dir)
-            # A missing previous model (first run) means a full load.
-            build(
-                Path(out_dir),
-                Path(modelo_dir),
-                prev if (prev / "licitacion.parquet").exists() else None,
-                Settings(),
-            )
+            # Nothing there (first run) means a full load.
+            known = (prev / BASELINE_MARKER).exists() or (
+                prev / "licitacion.parquet"
+            ).exists()
+            build(Path(out_dir), Path(modelo_dir), prev if known else None, Settings())
         case _:
             sys.exit("usage: export.d1 <out_dir> <modelo_dir> [<prev_modelo_dir>]")
 

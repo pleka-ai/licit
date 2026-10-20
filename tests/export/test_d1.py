@@ -11,7 +11,7 @@ from typing import Any
 import duckdb
 import pytest
 
-from export.d1 import D1_TABLES, build, main, sql_literal
+from export.d1 import BASELINE, BASELINE_MARKER, D1_TABLES, build, main, sql_literal
 from shared.config import Settings
 
 _SCHEMA = Path(__file__).parents[2] / "worker" / "schema.sql"
@@ -362,3 +362,46 @@ def test_cli_runs_without_postgres_settings(
     model = _model(tmp_path / "m", _BASE)
     main([str(tmp_path / "sql"), str(model)])
     assert sorted(p.name for p in (tmp_path / "sql").glob("d1-*.sql"))
+
+
+def test_baseline_diff_matches_model_diff(tmp_path: Path, settings: Settings) -> None:
+    prev = _model(tmp_path / "ayer", _BASE)
+    today = {k: [dict(r) for r in v] for k, v in _BASE.items()}
+    today["licitacion"][0]["titulo"] = "Mantenimiento de ascensores (lote 2)"
+    today["cargo_vigente"] = today["cargo_vigente"][1:]
+    new = _model(tmp_path / "hoy", today)
+
+    build(tmp_path / "full", prev, None, settings)
+    baseline = tmp_path / "full" / BASELINE
+    assert (baseline / BASELINE_MARKER).exists()
+
+    from_model = build(tmp_path / "d1", new, prev, settings)
+    from_baseline = build(tmp_path / "d2", new, baseline, settings)
+    assert from_baseline == from_model
+
+    def statements(d: Path) -> list[str]:
+        # Drop the trailing meta statement: it carries the time of the run.
+        text = "".join(f.read_text() for f in sorted(d.glob("d1-*.sql")))
+        return [line for line in text.splitlines() if "ultima_sync" not in line]
+
+    assert statements(tmp_path / "d1") == statements(tmp_path / "d2")
+
+
+def test_previous_model_without_new_tables(tmp_path: Path, settings: Settings) -> None:
+    # A model from before the BORME: no sociedad, no cargo_vigente and no
+    # empresa.sociedad_key. Those D1 tables are written in full.
+    old = _model(tmp_path / "antes", _BASE)
+    for name in ("sociedad", "cargo_vigente"):
+        (old / f"{name}.parquet").unlink()
+    duckdb.execute(
+        f"COPY (SELECT empresa_key, nif, nombre FROM '{old}/empresa.parquet')"
+        f" TO '{old}/empresa.parquet.tmp' (FORMAT parquet)"
+    )
+    (old / "empresa.parquet.tmp").rename(old / "empresa.parquet")
+
+    summary = build(tmp_path / "sql", _model(tmp_path / "m", _BASE), old, settings)
+
+    assert summary["sociedad"]["escritas"] == 1
+    assert summary["empresa_registro"]["escritas"] == 1
+    assert summary["cargo_vigente"]["escritas"] == 1
+    assert summary["licitacion"]["escritas"] == 0

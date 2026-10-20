@@ -78,7 +78,7 @@ estado() {
 
 # Same steps as historico.yml's consolidar job: every archived year (oldest
 # first), then the window, merged into the raw history; model; D1 by diff
-# against the last model D1 received (full load when there is none).
+# against the tables D1 last received (full load when there is none).
 modelo() {
   echo "[modelo] start $(date +%T)"
   rm -rf "$OUT/raw" "$OUT/modelo" "$OUT/modelo-d1" "$OUT/d1"
@@ -95,7 +95,7 @@ modelo() {
   uv run python -m export.d1 "$OUT/d1" "$OUT/modelo" "$OUT/modelo-d1"
   uv run python -m export.derived "$OUT/d1" "$OUT/modelo"
   "$ROOT/scripts/d1-load.sh" "$OUT/d1"
-  aws s3 sync "$OUT/modelo" "$BUCKET/state/modelo-d1/" --delete --only-show-errors
+  aws s3 sync "$OUT/d1/baseline" "$BUCKET/state/modelo-d1/" --delete --only-show-errors
   echo "[modelo] done $(date +%T)"
 }
 

@@ -154,12 +154,13 @@ jobs:
           aws s3 cp out/modelo "$BUCKET/parquet/modelo/" --recursive --only-show-errors
 
       - name: Sync D1
-        # state/modelo-d1 is the model D1 last received (the diff baseline);
-        # it only moves after a successful load. Without it: full load.
+        # state/modelo-d1 holds the tables D1 last received (the diff
+        # baseline, written by export.d1); it only moves after a successful
+        # load. Without it: full load.
         env:
           DATABASE_URL: ""
         run: |
           aws s3 cp "$BUCKET/state/modelo-d1/" out/modelo-d1 --recursive --only-show-errors
           scripts/d1-sql.sh out/d1 out/modelo out/modelo-d1
           scripts/d1-load.sh out/d1
-          aws s3 sync out/modelo "$BUCKET/state/modelo-d1/" --delete --only-show-errors
+          aws s3 sync out/d1/baseline "$BUCKET/state/modelo-d1/" --delete --only-show-errors

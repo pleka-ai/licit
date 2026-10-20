@@ -81,8 +81,8 @@ Worker "licit" (worker/): api.licit.es (API + Swagger), licit.es (site/ + /data)
 - **D1.** `worker/schema.sql` son las tablas del modelo que usa la API (la fila
   de `licitacion` va unida a su `ciclo_licitacion`), más la vista
   `licitacion_api` con las columnas planas de siempre. `export.d1` compara
-  el modelo de hoy con el último cargado (`state/modelo-d1/` en R2) y solo envía
-  upserts y borrados; sin modelo previo hace una carga completa en orden
+  las tablas de hoy con las últimas cargadas (`state/modelo-d1/` en R2, solo lo
+  que D1 recibe) y solo envía upserts y borrados; sin modelo previo hace una carga completa en orden
   cronológico, de modo que "más recientes primero" es un recorrido inverso por
   rowid. `export.derived` precalcula catálogos y estadísticas. El Worker cachea
   respuestas 1 h en el edge y corre junto a D1 (smart placement).

@@ -80,7 +80,7 @@ feed "$WORK/feeds-2" outsiders 2025 minimal_entry.xml
 py -m etl.handlers.feed_reader --local "$WORK/feeds-2" --years 2025
 py -m export.raw "$WORK/raw/dia-2"
 publish "$ROOT/scripts/modelo.sh" "$WORK/raw/todo-2" "$WORK/modelo-2" "$WORK/raw/todo-1" "$WORK/raw/dia-2"
-publish "$ROOT/scripts/d1-sql.sh" "$WORK/d1-2" "$WORK/modelo-2" "$WORK/modelo-1"
+publish "$ROOT/scripts/d1-sql.sh" "$WORK/d1-2" "$WORK/modelo-2" "$WORK/d1-1/baseline"
 (cd "$ROOT" && "$ROOT/scripts/d1-load.sh" "$WORK/d1-2")
 expect "licitaciones en D1 tras el diff" "$(d1_count 'SELECT count(*) n FROM licitacion_api')" 3
 expect "historial de estados" "$(d1_count 'SELECT count(*) n FROM cambio_estado')" 3
