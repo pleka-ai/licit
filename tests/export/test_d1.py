@@ -11,7 +11,7 @@ from typing import Any
 import duckdb
 import pytest
 
-from export.d1 import D1_TABLES, build, sql_literal
+from export.d1 import D1_TABLES, build, main, sql_literal
 from shared.config import Settings
 
 _SCHEMA = Path(__file__).parents[2] / "worker" / "schema.sql"
@@ -306,3 +306,15 @@ def test_injection_is_stored_as_text(
     assert db.execute("SELECT titulo FROM licitacion WHERE id = 'l-10'").fetchone() == (
         "x'); DROP TABLE licitacion; --",
     )
+
+
+def test_cli_runs_without_postgres_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The consolidation job has no Postgres, hence no DATABASE_URL.
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("ENVIRONMENT", "ci")
+    monkeypatch.chdir(tmp_path)  # no .env file
+    model = _model(tmp_path / "m", _BASE)
+    main([str(tmp_path / "sql"), str(model)])
+    assert sorted(p.name for p in (tmp_path / "sql").glob("d1-*.sql"))

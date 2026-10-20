@@ -4,8 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=(".env", ".env.local"), extra="ignore")
 
-    # Database
-    database_url: str
+    # Database (the ETL; the Parquet and D1 exports run without Postgres)
+    database_url: str = ""
 
     # Environment
     environment: str
