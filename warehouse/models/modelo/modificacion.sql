@@ -1,6 +1,7 @@
 MODEL (
   name modelo.modificacion,
   kind FULL,
+  tags (hecho),
   depends_on (modelo.organo),
   grain (licitacion_key, modificacion_n),
   description 'Hecho transaccional: cada modificación de contrato, con su efecto en importe y plazo.',

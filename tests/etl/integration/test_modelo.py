@@ -44,6 +44,10 @@ async def test_model_builds_from_raw(tmp_path: Path) -> None:
     assert isinstance(tablas, dict)
     for table in ("licitacion", "adjudicacion", "lote", "organo", "empresa", "cpv"):
         assert (tmp_path / "modelo" / f"{table}.parquet").exists(), table
+    # The manifest documents each table for the explorer.
+    assert tablas["licitacion"]["tipo"] == "hecho"
+    assert tablas["organo"]["tipo"] == "dimension"
+    assert ["licitacion_key", "BIGINT"] in tablas["licitacion"]["columnas"]
 
     out = str(tmp_path / "modelo") + "/"
     con = duckdb.connect()

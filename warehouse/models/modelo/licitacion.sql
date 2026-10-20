@@ -1,6 +1,7 @@
 MODEL (
   name modelo.licitacion,
   kind FULL,
+  tags (hecho),
   depends_on (modelo.organo, modelo.modalidad, modelo.estado, modelo.cpv, modelo.lugar, modelo.empresa, modelo.resultado),
   grain licitacion_key,
   description 'Snapshot acumulativo: una fila por expediente con los hitos de su ciclo de vida (publicación, plazo, cada estado alcanzado, adjudicación, formalización) y medidas acumuladas de sus lotes, adjudicaciones, modificaciones y documentos. Se reescribe cada vez que PLACSP publica una versión nueva del expediente.',

@@ -1,6 +1,7 @@
 MODEL (
   name modelo.tipo_anuncio,
   kind FULL,
+  tags (dimension),
   grain tipo_anuncio_key,
   description 'Tipo de anuncio publicado (licitación, adjudicación, formalización, anulaciones…).',
   audits (

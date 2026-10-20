@@ -1,6 +1,7 @@
 MODEL (
   name modelo.lugar_ejecucion,
   kind FULL,
+  tags (hecho),
   depends_on (modelo.lugar, modelo.organo),
   grain (licitacion_key, lote_numero, ubicacion_n),
   description 'Hecho sin medidas: lugares concretos donde se ejecuta cada lote.',

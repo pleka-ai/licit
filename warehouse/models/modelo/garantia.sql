@@ -1,6 +1,7 @@
 MODEL (
   name modelo.garantia,
   kind FULL,
+  tags (hecho),
   depends_on (modelo.tipo_garantia, modelo.organo),
   grain (licitacion_key, garantia_n),
   description 'Garantías exigidas al licitador o al adjudicatario.',

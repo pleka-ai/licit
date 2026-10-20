@@ -1,6 +1,7 @@
 MODEL (
   name modelo.cpv_licitacion,
   kind FULL,
+  tags (puente),
   depends_on (modelo.cpv),
   grain (licitacion_key, cpv_n),
   description 'Tabla puente para la dimensión multivaluada CPV: todos los códigos de un expediente y de sus lotes. `es_principal` marca el que usa licitacion.cpv_key, y `peso` reparte 1 entre los códigos del expediente para sumar sin contar dos veces.',

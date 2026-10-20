@@ -1,6 +1,7 @@
 MODEL (
   name modelo.calendario,
   kind FULL,
+  tags (dimension),
   grain fecha,
   description 'Dimensión de fechas. Todas las fechas del modelo (publicación, plazo, adjudicación, formalización…) la usan como rol; la clave es la propia fecha.',
   audits (

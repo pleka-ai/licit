@@ -1,6 +1,7 @@
 MODEL (
   name modelo.tipo_documento,
   kind FULL,
+  tags (dimension),
   grain tipo_documento_key,
   description 'Clase de documento: origen (pliego legal, técnico, adicional, general, anuncio) por tipo CODICE.',
   audits (
