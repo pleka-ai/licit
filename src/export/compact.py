@@ -29,7 +29,9 @@ from shared.logger import get_logger
 logger = get_logger(__name__)
 
 _CHILDREN = ("lote", "adjudicacion", "cpv")
-_COPY_OPTS = "FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 100000"
+# Few, large row groups: the browser explorer fetches one HTTP range per
+# column chunk, so fewer groups means far fewer round trips.
+_COPY_OPTS = "FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 500000"
 _HISTORIAL_TYPE = '[{"fecha": "VARCHAR", "estado": "VARCHAR"}]'
 
 
