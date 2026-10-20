@@ -28,7 +28,7 @@
         <header class="pg-head">
           <div>
             <h1>Explorar<span class="cursor">_</span></h1>
-            <p class="lead">SQL sobre 1,6 millones de licitaciones públicas desde 2017, organizadas como un modelo dimensional: hechos (licitaciones, adjudicaciones, lotes…) y dimensiones (órganos, empresas, CPV, lugares…) unidos por sus columnas <code>_key</code>. La consulta se ejecuta en tu navegador con DuckDB y solo descarga los trozos de datos que necesita.</p>
+            <p class="lead">SQL sobre 1,6 millones de licitaciones públicas desde 2017, organizadas como un modelo dimensional: entidades (licitaciones, lotes, órganos, empresas, CPV, lugares, documentos…) y los hechos que las miden (presupuestos, adjudicaciones, tramitación, cambios de estado…), unidos por sus columnas <code>_key</code>. La consulta se ejecuta en tu navegador con DuckDB y solo descarga los trozos de datos que necesita.</p>
           </div>
           <span class="pg-status" id="status" data-state="loading"><i></i><b id="status-text">Descargando motor…</b></span>
         </header>
@@ -91,9 +91,9 @@
   <script type="module">
     import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm";
 
-    // The data is a dimensional model: facts (licitacion, adjudicacion, lote…)
-    // joined to dimensions (organo, empresa, cpv, lugar, modalidad…) by their
-    // *_key columns. Aggregates answer instantly; facts scan millions of rows
+    // The data is a dimensional model: entities (licitacion, lote, organo,
+    // empresa, cpv, lugar, documento…) and the facts that measure them
+    // (ciclo_licitacion, presupuesto_lote, adjudicacion…), joined by *_key. Aggregates answer instantly; facts scan millions of rows
     // in the browser (several seconds the first time, faster once cached).
     const EXAMPLES = [
       {
@@ -147,12 +147,12 @@ LIMIT 50;`,
         title: "Por comunidad",
         desc: "Presupuesto por lote y CCAA",
         speed: "millones de filas",
-        sql: `-- lote: un lote por fila (o el expediente entero si no tiene lotes),
--- así que sumar presupuestos no cuenta nada dos veces.
+        sql: `-- presupuesto_lote: un lote por fila (o la licitación entera si no
+-- tiene lotes), así que sumar presupuestos no cuenta nada dos veces.
 SELECT g.nuts2 AS comunidad,
        count(*) AS lotes,
-       round(sum(o.presupuesto_sin_iva) / 1e6) AS millones_eur
-FROM lote o
+       round(sum(p.presupuesto_sin_iva) / 1e6) AS millones_eur
+FROM presupuesto_lote p
 JOIN lugar g USING (lugar_key)
 WHERE g.pais_codigo = 'ES' AND g.nuts2 IS NOT NULL
 GROUP BY comunidad
@@ -179,13 +179,13 @@ ORDER BY baja_media_pct DESC;`,
         title: "Competencia",
         desc: "Ofertas por procedimiento",
         speed: "millones de filas",
-        sql: `SELECT m.procedimiento,
+        sql: `SELECT l.procedimiento,
        round(avg(a.num_ofertas), 1) AS ofertas_medias,
        round(100 * avg((a.num_ofertas = 1)::INT), 1) AS pct_una_sola_oferta
 FROM adjudicacion a
-JOIN modalidad m USING (modalidad_key)
+JOIN licitacion l USING (licitacion_key)
 WHERE a.num_ofertas > 0
-GROUP BY m.procedimiento
+GROUP BY l.procedimiento
 HAVING count(*) > 100
 ORDER BY ofertas_medias DESC;`,
       },
@@ -193,16 +193,16 @@ ORDER BY ofertas_medias DESC;`,
         title: "Tiempo hasta adjudicar",
         desc: "Días desde la publicación, por tipo",
         speed: "millones de filas",
-        sql: `-- licitacion es un snapshot acumulativo: una fila por expediente
--- con las fechas de cada hito de su ciclo de vida.
-SELECT m.tipo_contrato,
+        sql: `-- ciclo_licitacion es un snapshot acumulativo: una fila por licitación
+-- con las fechas de cada hito de su tramitación.
+SELECT l.tipo_contrato,
        count(*) AS adjudicadas,
-       median(l.dias_hasta_adjudicacion) AS mediana_dias,
-       quantile_cont(l.dias_hasta_adjudicacion, 0.9) AS p90_dias
-FROM licitacion l
-JOIN modalidad m USING (modalidad_key)
-WHERE l.dias_hasta_adjudicacion BETWEEN 0 AND 1000
-GROUP BY m.tipo_contrato
+       median(c.dias_hasta_adjudicacion) AS mediana_dias,
+       quantile_cont(c.dias_hasta_adjudicacion, 0.9) AS p90_dias
+FROM ciclo_licitacion c
+JOIN licitacion l USING (licitacion_key)
+WHERE c.dias_hasta_adjudicacion BETWEEN 0 AND 1000
+GROUP BY l.tipo_contrato
 HAVING adjudicadas > 100
 ORDER BY mediana_dias;`,
       },
@@ -210,15 +210,16 @@ ORDER BY mediana_dias;`,
         title: "Buscar por texto",
         desc: "Ciberseguridad en el último año",
         speed: "millones de filas",
-        sql: `SELECT l.fecha_publicacion::DATE AS fecha,
+        sql: `SELECT c.fecha_publicacion::DATE AS fecha,
        l.titulo,
        o.nombre AS organo,
-       l.presupuesto_sin_iva
+       c.presupuesto_sin_iva
 FROM licitacion l
+JOIN ciclo_licitacion c USING (licitacion_key)
 JOIN organo o USING (organo_key)
-WHERE l.fecha_publicacion >= current_date - INTERVAL 1 YEAR
+WHERE c.fecha_publicacion >= current_date - INTERVAL 1 YEAR
   AND l.titulo ILIKE '%ciberseguridad%'
-ORDER BY l.fecha_publicacion DESC
+ORDER BY c.fecha_publicacion DESC
 LIMIT 50;`,
       },
     ];

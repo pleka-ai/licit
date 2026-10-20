@@ -57,17 +57,20 @@ Worker "licit" (worker/): api.licit.es (API + Swagger), licit.es (site/ + /data)
   distintos. `export.compact` funde la ventana diaria con los años archivados:
   cada expediente conserva su versión más reciente con sus hijos y la unión de
   todos los estados observados.
-- **Modelo dimensional.** `warehouse/` es un proyecto SQLMesh que sigue a Kimball:
-  `licitacion` (snapshot acumulativo por expediente), `adjudicacion`, `lote`,
-  `cambio_estado` y otros hechos, dimensiones conformadas (`organo`, `empresa`,
-  `cpv`, `lugar`, `modalidad`, `calendario`…) y agregados. La matriz de bus y
+- **Modelo dimensional.** `warehouse/` es un proyecto SQLMesh que sigue a Kimball.
+  Las entidades son dimensiones (`licitacion`, `lote`, `organo`, `empresa`,
+  `cpv`, `lugar`, `documento`, `criterio_adjudicacion`…) y los procesos son
+  hechos con las claves de todas ellas (`ciclo_licitacion`, snapshot
+  acumulativo de la tramitación; `presupuesto_lote`; `adjudicacion`;
+  `cambio_estado`; `modificacion`; `anuncio`), más agregados. La matriz de bus y
   las convenciones están en [warehouse/README.md](warehouse/README.md). Los
   audits (grano, claves, integridad referencial) bloquean la publicación.
 - **Ids estables.** Claves sustitutas deterministas (md5 de la clave de negocio)
   e ids públicos `md5('licitacion:' || entry_id)` y `md5('organo:' || …)`, así
   que cada reconstrucción genera los mismos ids.
-- **D1.** `worker/schema.sql` es la parte de la estrella que usa la API, más la
-  vista `licitacion_api` con las columnas planas de siempre. `export.d1` compara
+- **D1.** `worker/schema.sql` es la parte de la estrella que usa la API (la fila
+  de `licitacion` va unida a su `ciclo_licitacion`), más la vista
+  `licitacion_api` con las columnas planas de siempre. `export.d1` compara
   el modelo de hoy con el último cargado (`state/modelo-d1/` en R2) y solo envía
   upserts y borrados; sin modelo previo hace una carga completa en orden
   cronológico, de modo que "más recientes primero" es un recorrido inverso por
