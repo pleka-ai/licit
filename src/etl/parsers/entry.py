@@ -221,6 +221,7 @@ class EntryParser:
                 status = PublicationStatusWrite(
                     valid_notice_info_id=_PLACEHOLDER,
                     publication_media_name=ps.publication_media_name,
+                    issue_date=ps.issue_date,
                 )
                 docs = [
                     DocumentReferenceWrite(

@@ -1052,6 +1052,49 @@ li code {
   white-space: nowrap;
 }
 
+.pg-schema li.pg-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.4rem;
+  margin: 0.9rem 0 0.3rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+
+.pg-schema li.pg-group:first-child {
+  margin-top: 0.2rem;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.pg-schema li.pg-group strong {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pg-schema li.pg-group span {
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+.pg-schema li.pg-group small {
+  flex-basis: 100%;
+  color: var(--fg-faint);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.pg-schema li.pg-about {
+  display: block;
+  color: var(--fg-faint);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  padding-bottom: 0.3rem;
+}
+
 .pg-schema details details > summary {
   display: flex;
   flex-direction: column;

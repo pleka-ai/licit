@@ -1,20 +1,47 @@
 name: Historico
 
-# One-off back-fill of archived PLACSP years into D1 (full history) and frozen
-# Parquet under parquet/historico/<año>/. Each year runs on its own fresh
-# Postgres; nothing here touches the daily ETL state.
+# Back-fill of archived PLACSP years, in two stages that can be run apart:
+#
+#   ingestar   — each year on its own fresh Postgres → parquet/raw/historico/<año>/,
+#                stamped with the parser version (scripts/version-parser.sh). A
+#                year already ingested with the same version is skipped unless
+#                `forzar`. Yearly zips are cached in cache/placsp/.
+#   consolidar — merge every published year into the raw history, rebuild the
+#                data model and sync it to R2 and D1, serialised with the ETL.
+#   todo       — both.
 
 on:
   workflow_dispatch:
     inputs:
+      modo:
+        type: choice
+        options: [todo, ingestar, consolidar]
+        default: todo
       anios:
-        description: "Años separados por espacio"
+        description: "Años separados por espacio (ingestar, todo)"
         type: string
         default: "2017 2018 2019 2020 2021 2022 2023 2024"
+      forzar:
+        description: "Ingerir aunque el año ya esté publicado con esta versión del parser"
+        type: boolean
+        default: false
 
 concurrency:
   group: historico
   cancel-in-progress: false
+
+env:
+  MODO: ${{ inputs.modo }}
+  PYTHONPATH: src
+  ENVIRONMENT: ci
+  AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  AWS_DEFAULT_REGION: auto
+  AWS_ENDPOINT_URL: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  BUCKET: ${{ vars.R2_BUCKET || 's3://licit-data' }}
+  D1_DATABASE: ${{ vars.D1_DATABASE || 'licit-api' }}
 
 jobs:
   plan:
@@ -26,16 +53,21 @@ jobs:
         env:
           ANIOS: ${{ inputs.anios }}
         run: |
+          if [ "$MODO" = consolidar ]; then
+            echo "years=[]" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           echo "$ANIOS" | grep -Eq '^ *[0-9]{4}( +[0-9]{4})* *$' || { echo "anios inválidos"; exit 1; }
+          # shellcheck disable=SC2086  # unquoted to squeeze spaces
           echo "years=$(echo $ANIOS | jq -Rc 'split(" ") | map(select(. != ""))')" >> "$GITHUB_OUTPUT"
 
   year:
     needs: plan
+    if: ${{ inputs.modo != 'consolidar' }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 8
       matrix:
         year: ${{ fromJson(needs.plan.outputs.years) }}
     services:
@@ -55,15 +87,67 @@ jobs:
     env:
       YEAR: ${{ matrix.year }}
       DATABASE_URL: postgresql://licit:licit@localhost:5432/licit
-      ENVIRONMENT: ci
-      PYTHONPATH: src
-      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      AWS_DEFAULT_REGION: auto
-      AWS_ENDPOINT_URL: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      BUCKET: s3://licit-data
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the published version
+        id: check
+        env:
+          FORZAR: ${{ inputs.forzar }}
+        run: |
+          version=$(scripts/version-parser.sh)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          published=$(aws s3 cp "$BUCKET/parquet/raw/historico/$YEAR/version.txt" - 2>/dev/null || true)
+          if [ "$published" = "$version" ] && [ "$FORZAR" != true ]; then
+            echo "$YEAR ya está publicado con la versión $version del parser"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: astral-sh/setup-uv@v4
+        if: steps.check.outputs.skip != 'true'
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - if: steps.check.outputs.skip != 'true'
+        run: uv python install 3.12 && uv sync --frozen
+
+      - name: Install Postgres client
+        if: steps.check.outputs.skip != 'true'
+        run: sudo apt-get install -y -qq postgresql-client > /dev/null
+
+      - name: Apply schema
+        if: steps.check.outputs.skip != 'true'
+        run: ./schema/apply.sh "$DATABASE_URL"
+
+      - name: Ingest archive
+        # Archived years never change: zips come from cache/placsp/ when
+        # present, and new downloads are added to it.
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          aws s3 cp "$BUCKET/cache/placsp/" zips --recursive --exclude "*" --include "*_$YEAR.zip" --only-show-errors
+          uv run python -m etl.handlers.feed_reader --seed --years "$YEAR" --zip-dir zips
+          aws s3 cp zips "$BUCKET/cache/placsp/" --recursive --only-show-errors
+
+      - name: Export raw year
+        if: steps.check.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          uv run python -m export.raw out/raw
+          echo "$VERSION" > out/raw/version.txt
+          aws s3 sync out/raw "$BUCKET/parquet/raw/historico/$YEAR/" --delete --only-show-errors
+
+  consolidar:
+    needs: year
+    # Merge whatever years are published, also after some failed.
+    if: ${{ !cancelled() && inputs.modo != 'ingestar' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    # Shares the daily ETL's group: both write the raw history, the model and D1.
+    concurrency:
+      group: etl
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -74,21 +158,23 @@ jobs:
 
       - run: uv python install 3.12 && uv sync --frozen
 
-      - name: Install Postgres client
-        run: sudo apt-get install -y -qq postgresql-client > /dev/null
-
-      - name: Apply schema
-        run: ./schema/apply.sh "$DATABASE_URL"
-
-      - name: Ingest archive
-        run: uv run python -m etl.handlers.feed_reader --seed --years "$YEAR"
-
-      - name: Publish Parquet
+      - name: Build data model
+        # Oldest first and the existing history last: later sources win ties.
         run: |
-          uv run python -m export.parquet "out/parquet"
-          aws s3 cp out/parquet "$BUCKET/parquet/historico/$YEAR/" --recursive --only-show-errors
+          aws s3 cp "$BUCKET/parquet/raw/historico/" out/raw/historico --recursive --only-show-errors
+          aws s3 cp "$BUCKET/parquet/raw/todo/" out/raw/todo-prev --recursive --only-show-errors
+          srcs=$(find out/raw/historico -mindepth 1 -maxdepth 1 -type d | sort)
+          if [ -f out/raw/todo-prev/contract_folder_status.parquet ]; then
+            srcs="$srcs out/raw/todo-prev"
+          fi
+          # shellcheck disable=SC2086
+          scripts/modelo.sh out/raw/todo out/modelo $srcs
+          aws s3 cp out/raw/todo "$BUCKET/parquet/raw/todo/" --recursive --only-show-errors
+          aws s3 cp out/modelo "$BUCKET/parquet/modelo/" --recursive --only-show-errors
 
-      - name: Load D1
+      - name: Sync D1
         run: |
-          uv run python -m export.d1 build out/d1 --todo
-          ./scripts/d1-load.sh out/d1
+          aws s3 cp "$BUCKET/state/modelo-d1/" out/modelo-d1 --recursive --only-show-errors
+          scripts/d1-sql.sh out/d1 out/modelo out/modelo-d1
+          scripts/d1-load.sh out/d1
+          aws s3 sync out/modelo "$BUCKET/state/modelo-d1/" --delete --only-show-errors

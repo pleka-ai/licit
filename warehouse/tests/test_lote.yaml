@@ -1,0 +1,23 @@
+test_lote_objeto_unico_sin_lotes:
+  model: stage.lote
+  description: A licitación with lots yields one row per lot with the lot's own CPV; one without lots yields a single 'objeto único' lot "0" with the folder budget.
+  inputs:
+    stage.contract_folder_status:
+      rows:
+        - {licitacion_key: 1, entry_id: e1, name: Con lotes, tax_exclusive_amount: 1000.0}
+        - {licitacion_key: 2, entry_id: e2, name: Sin lotes, tax_exclusive_amount: 50.0, total_amount: 60.5}
+    stage.procurement_project_lot:
+      rows:
+        - {licitacion_key: 1, entry_id: e1, lot_number: '1', name: Lote A, tax_exclusive_amount: 400.0, nuts_code: ES300}
+        - {licitacion_key: 1, entry_id: e1, lot_number: '2', name: Lote B, tax_exclusive_amount: 600.0}
+    stage.cpv_classification:
+      rows:
+        - {licitacion_key: 1, entry_id: e1, n: 1, lot_number: null, cpv_code: '45000000'}
+        - {licitacion_key: 1, entry_id: e1, n: 2, lot_number: '1', cpv_code: '45233142'}
+  outputs:
+    query:
+      partial: true
+      rows:
+        - {licitacion_key: 1, lote_numero: '1', es_objeto_unico: false, titulo: Lote A, cpv_code: '45233142', nuts_code: ES300, presupuesto_sin_iva: 400.0}
+        - {licitacion_key: 1, lote_numero: '2', es_objeto_unico: false, titulo: Lote B, cpv_code: null, nuts_code: null, presupuesto_sin_iva: 600.0}
+        - {licitacion_key: 2, lote_numero: '0', es_objeto_unico: true, titulo: Sin lotes, cpv_code: null, nuts_code: null, presupuesto_sin_iva: 50.0}

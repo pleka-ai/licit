@@ -20,6 +20,7 @@ class PublicationStatusData:
     """Raw publication status data before FK assignment."""
 
     publication_media_name: str | None = None
+    issue_date: date | None = None
     documents: list[DocumentData] = field(default_factory=list)
 
 
@@ -45,9 +46,15 @@ class ValidNoticeInfoParser:
 
         for vni in find_children(folder_elem, "ValidNoticeInfo"):
             notice_type = text(find_first(vni, "NoticeTypeCode"))
-            notice_date = text_date(find_first(vni, "NoticeIssueDate"))
-
             statuses = self._parse_statuses(vni)
+
+            # PLACSP dates each publication (AdditionalPublicationDocumentReference/
+            # IssueDate); NoticeIssueDate is rarely present. The notice date is
+            # its own if given, else its first publication.
+            published = [s.issue_date for s in statuses if s.issue_date is not None]
+            notice_date = text_date(find_first(vni, "NoticeIssueDate")) or (
+                min(published) if published else None
+            )
 
             notices.append(
                 NoticeData(
@@ -66,10 +73,16 @@ class ValidNoticeInfoParser:
             media_name = text(find_first(aps, "PublicationMediaName"))
 
             documents = self._parse_pub_documents(aps)
+            dates = [
+                d
+                for ref in find_all(aps, "AdditionalPublicationDocumentReference")
+                if (d := text_date(find_first(ref, "IssueDate"))) is not None
+            ]
 
             statuses.append(
                 PublicationStatusData(
                     publication_media_name=media_name,
+                    issue_date=min(dates) if dates else None,
                     documents=documents,
                 )
             )

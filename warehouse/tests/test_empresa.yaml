@@ -1,0 +1,25 @@
+test_empresa_nombre_vigente_y_miembros_reservados:
+  model: modelo.empresa
+  description: A company keeps the name of its most recent award; UTEs are flagged; the placeholder rows exist.
+  inputs:
+    stage.winning_party:
+      rows:
+        - {entry_id: e1, empresa_ref: B1, identifier: B1, identifier_scheme: NIF, name: Viejo SL}
+        - {entry_id: e2, empresa_ref: B1, identifier: B1, identifier_scheme: NIF, name: Nuevo SL}
+        - {entry_id: e2, empresa_ref: U1, identifier: U1, identifier_scheme: UTE, name: UTE Obras}
+    stage.contract_folder_status:
+      rows:
+        - {entry_id: e1, updated: '2024-01-01 00:00:00+00'}
+        - {entry_id: e2, updated: '2025-01-01 00:00:00+00'}
+    stage.codice_code:
+      rows:
+        - {list: country_code, code: ES, description: España}
+  outputs:
+    query:
+      partial: true
+      # Sorted by key: placeholder rows first, then md5-derived keys.
+      rows:
+        - {empresa_key: -1, referencia: __no_aplica__, nombre: Sin adjudicatario, es_ute: null}
+        - {empresa_key: 0, referencia: __desconocida__, nombre: Empresa desconocida, es_ute: null}
+        - {empresa_key: 1086721481743407, referencia: U1, nombre: UTE Obras, es_ute: true}
+        - {empresa_key: 3369943935712938, referencia: B1, nombre: Nuevo SL, es_ute: false}

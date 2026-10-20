@@ -798,11 +798,12 @@ class PgEntryRepository:
                 ps_row = await conn.fetchrow(
                     "INSERT INTO publication_status"
                     " (valid_notice_info_id,"
-                    " publication_media_name)"
-                    " VALUES ($1, $2)"
+                    " publication_media_name, issue_date)"
+                    " VALUES ($1, $2, $3)"
                     " RETURNING id",
                     notice_id,
                     sg.status.publication_media_name,
+                    sg.status.issue_date,
                 )
                 pub_status_id = ps_row["id"]
 

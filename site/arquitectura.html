@@ -131,14 +131,14 @@
             <span class="n">2</span>
             <div>
               <h3>Actualización diaria</h3>
-              <p>Cada madrugada se descargan las licitaciones nuevas y las que han cambiado. Los códigos CODICE se traducen a etiquetas legibles y cada licitación conserva su historial de estados.</p>
+              <p>Cada madrugada se descargan las licitaciones nuevas y las que han cambiado y se reconstruyen las tablas: licitaciones, lotes, órganos, empresas, CPV, lugares, documentos y criterios, y su actividad (presupuestos, adjudicaciones, tramitación, cambios de estado…). Los códigos CODICE se traducen a etiquetas legibles y cada licitación conserva su historial de estados.</p>
             </div>
           </li>
           <li class="reveal">
             <span class="n">3</span>
             <div>
               <h3>Publicación</h3>
-              <p>El resultado se publica en dos formatos: la API, para buscar y consultar fichas, y ficheros Parquet con todo el histórico, para análisis.</p>
+              <p>El resultado se publica en dos formatos: la API, para buscar y consultar fichas, y ficheros Parquet con todo el histórico, para análisis: el modelo de datos y, aparte, las tablas tal como las publica la PLACSP.</p>
             </div>
           </li>
           <li class="reveal">
@@ -188,6 +188,10 @@
           <article class="reveal">
             <h3>Cobertura</h3>
             <p>Licitaciones publicadas desde 2017 en los perfiles de contratante de la PLACSP y en las plataformas autonómicas que agrega.</p>
+          </article>
+          <article class="reveal">
+            <h3>Modelo de datos</h3>
+            <p>Los Parquet de <code>parquet/modelo/</code> son tablas de entidades (<code>licitacion</code>, <code>lote</code>, <code>organo</code>, <code>empresa</code>, <code>cpv</code>, <code>documento</code>…) y de actividad (<code>ciclo_licitacion</code>, <code>presupuesto_lote</code>, <code>adjudicacion</code>…), unidas por sus columnas <code>_key</code>, que no cambian entre actualizaciones. Su <code>manifest.json</code> describe cada tabla y sus columnas. En <code>parquet/raw/</code> están las tablas tal como las publica la PLACSP.</p>
           </article>
           <article class="reveal">
             <h3>Acceso abierto</h3>

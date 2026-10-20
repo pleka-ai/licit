@@ -14,8 +14,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "licit-api",
-      "database_id": "bd4f71e0-fa34-46af-b6da-ddcc2b1eca46",
+      "database_name": "licit-datos",
+      "database_id": "72bd31c7-78a0-430f-a169-d608eb62ba78",
       "migrations_dir": "worker"
     }
   ],
